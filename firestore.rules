@@ -2,69 +2,49 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     
-    // Función auxiliar para verificar autenticación
+    // Función auxiliar para verificar si el usuario inició sesión
     function isAuthenticated() {
       return request.auth != null;
     }
-    
-    // Función para verificar rol de Administrador
-    function isAdmin() {
-      return isAuthenticated() && 
-        (request.auth.token.role == 'administrador' || 
-         request.auth.token.email.matches('.*@empresa[.]com') ||
-         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'administrador');
-    }
 
-    // Colección de Usuarios
-    match /users/{userId} {
-      allow read: if isAuthenticated();
-      allow write: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
-    }
-
-    // Colección de Espacios Físicos
+    // Colección de Espacios Físicos (Lectura pública para ver disponibilidad, escritura para autenticados)
     match /spaces/{spaceId} {
-      allow read: if true; // Lectura pública para consulta de disponibilidad
-      allow create, update, delete: if isAdmin();
+      allow read: if true;
+      allow write: if isAuthenticated();
     }
 
     // Colección de Personas
     match /people/{personId} {
-      allow read: if isAuthenticated();
-      allow create, update, delete: if isAdmin();
+      allow read: if true;
+      allow write: if isAuthenticated();
     }
 
-    // Colección de Eventos
+    // Colección de Eventos (Lectura pública para el calendario, escritura para autenticados)
     match /events/{eventId} {
       allow read: if true;
-      allow create: if isAuthenticated();
-      allow update, delete: if isAuthenticated() && (
-        resource.data.createdBy.uid == request.auth.uid || isAdmin()
-      );
+      allow create, update, delete: if isAuthenticated();
     }
 
-    // Solicitudes de Participación
+    // Solicitudes de Participación (Permite consultar y confirmar/rechazar mediante token)
     match /participation_requests/{requestId} {
-      allow read: if true; // Permite a la persona consultar su solicitud mediante token
-      allow create: if isAuthenticated();
-      allow update: if true; // Permite confirmar/rechazar con token seguro
-      allow delete: if isAdmin();
+      allow read, update: if true;
+      allow create, delete: if isAuthenticated();
     }
 
     // Notificaciones
     match /notifications/{notifId} {
-      allow read: if isAuthenticated() && (
-        resource.data.userId == request.auth.uid || 
-        resource.data.userId == 'ALL_ADMINS'
-      );
-      allow create: if isAuthenticated();
-      allow update: if isAuthenticated();
+      allow read, write: if isAuthenticated();
     }
 
-    // Logs de Auditoría (Solo append por usuarios autenticados, lectura para admins)
+    // Logs de Auditoría (Trazabilidad inmutable)
     match /audit_logs/{logId} {
-      allow read: if isAdmin();
-      allow create: if isAuthenticated();
-      allow update, delete: if false; // Inmutable
+      allow read, create: if isAuthenticated();
+      allow update, delete: if false;
+    }
+
+    // Usuarios del sistema
+    match /users/{userId} {
+      allow read, write: if isAuthenticated();
     }
   }
 }
