@@ -13,11 +13,17 @@ export const EventsChart: React.FC<EventsChartProps> = ({ events, people }) => {
   // Conteo por tipo de evento
   const typesMap: Record<string, number> = {
     academico: 0,
-    grabacion: 0,
+    simposio: 0,
+    curso: 0,
+    transmision: 0,
+    catedra: 0,
+    congreso: 0,
     conferencia: 0,
     taller: 0,
     reunion: 0,
+    grabacion: 0,
     institucional: 0,
+    otro: 0,
   };
 
   activeEvents.forEach((e) => {
@@ -27,12 +33,32 @@ export const EventsChart: React.FC<EventsChartProps> = ({ events, people }) => {
 
   const typeColors: Record<string, string> = {
     academico: 'bg-indigo-500',
-    grabacion: 'bg-cyan-500',
+    simposio: 'bg-teal-500',
+    curso: 'bg-blue-500',
+    transmision: 'bg-fuchsia-500',
+    catedra: 'bg-orange-500',
+    congreso: 'bg-purple-600',
     conferencia: 'bg-violet-500',
     taller: 'bg-amber-500',
     reunion: 'bg-emerald-500',
+    grabacion: 'bg-cyan-500',
     institucional: 'bg-rose-500',
     otro: 'bg-slate-400',
+  };
+
+  const typeLabels: Record<string, string> = {
+    academico: 'Académico',
+    simposio: 'Simposio',
+    curso: 'Curso',
+    transmision: 'Transmisión',
+    catedra: 'Cátedra',
+    congreso: 'Congreso',
+    conferencia: 'Conferencia',
+    taller: 'Taller',
+    reunion: 'Reunión',
+    grabacion: 'Grabación',
+    institucional: 'Institucional',
+    otro: 'Otro',
   };
 
   // Conteo por estado
@@ -68,6 +94,12 @@ export const EventsChart: React.FC<EventsChartProps> = ({ events, people }) => {
 
   const maxWorkload = Math.max(1, ...sortedWorkload.map((w) => w.count));
 
+  // Filtrar tipos más relevantes para mostrar en la gráfica
+  const displayTypes = Object.entries(typesMap)
+    .filter(([t, count]) => count > 0 || ['academico', 'simposio', 'curso', 'conferencia', 'congreso'].includes(t))
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 6);
+
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
       {/* 1. Eventos por Tipo */}
@@ -81,12 +113,12 @@ export const EventsChart: React.FC<EventsChartProps> = ({ events, people }) => {
           </div>
 
           <div className="mt-4 space-y-2.5">
-            {Object.entries(typesMap).map(([type, count]) => {
+            {displayTypes.map(([type, count]) => {
               const percent = activeEvents.length > 0 ? Math.round((count / activeEvents.length) * 100) : 0;
               return (
                 <div key={type} className="text-xs">
                   <div className="flex justify-between items-center text-slate-700 mb-1">
-                    <span className="capitalize font-medium">{type}</span>
+                    <span className="font-medium">{typeLabels[type] || type}</span>
                     <span className="font-semibold text-slate-900">
                       {count} ({percent}%)
                     </span>

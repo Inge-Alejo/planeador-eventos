@@ -115,11 +115,17 @@ export const EventPlanningList: React.FC<EventPlanningListProps> = ({
           >
             <option value="todos">Todos los tipos</option>
             <option value="academico">Académico</option>
-            <option value="grabacion">Grabación</option>
+            <option value="simposio">Simposio</option>
+            <option value="curso">Curso</option>
+            <option value="transmision">Transmisión</option>
+            <option value="catedra">Cátedra</option>
+            <option value="congreso">Congreso</option>
             <option value="conferencia">Conferencia</option>
             <option value="taller">Taller</option>
             <option value="reunion">Reunión</option>
+            <option value="grabacion">Grabación</option>
             <option value="institucional">Institucional</option>
+            <option value="otro">Otro</option>
           </select>
 
           <select

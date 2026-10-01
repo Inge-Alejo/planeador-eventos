@@ -278,10 +278,15 @@ export const EventModal: React.FC<EventModalProps> = ({
                 className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 capitalize"
               >
                 <option value="academico">Académico</option>
-                <option value="grabacion">Grabación</option>
+                <option value="simposio">Simposio</option>
+                <option value="curso">Curso</option>
+                <option value="transmision">Transmisión</option>
+                <option value="catedra">Cátedra</option>
+                <option value="congreso">Congreso</option>
                 <option value="conferencia">Conferencia</option>
                 <option value="taller">Taller</option>
                 <option value="reunion">Reunión</option>
+                <option value="grabacion">Grabación</option>
                 <option value="institucional">Institucional</option>
                 <option value="otro">Otro</option>
               </select>

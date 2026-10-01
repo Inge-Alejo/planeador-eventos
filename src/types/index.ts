@@ -79,10 +79,15 @@ export interface PersonalTask {
 
 export type EventType = 
   | 'academico' 
-  | 'grabacion' 
+  | 'simposio'
+  | 'curso'
+  | 'transmision'
+  | 'catedra'
+  | 'congreso'
   | 'conferencia' 
   | 'taller' 
   | 'reunion' 
+  | 'grabacion' 
   | 'institucional' 
   | 'otro';
 
