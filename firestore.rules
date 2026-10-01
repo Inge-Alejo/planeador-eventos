@@ -1,0 +1,70 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Función auxiliar para verificar autenticación
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Función para verificar rol de Administrador
+    function isAdmin() {
+      return isAuthenticated() && 
+        (request.auth.token.role == 'administrador' || 
+         request.auth.token.email.matches('.*@empresa[.]com') ||
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'administrador');
+    }
+
+    // Colección de Usuarios
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+    }
+
+    // Colección de Espacios Físicos
+    match /spaces/{spaceId} {
+      allow read: if true; // Lectura pública para consulta de disponibilidad
+      allow create, update, delete: if isAdmin();
+    }
+
+    // Colección de Personas
+    match /people/{personId} {
+      allow read: if isAuthenticated();
+      allow create, update, delete: if isAdmin();
+    }
+
+    // Colección de Eventos
+    match /events/{eventId} {
+      allow read: if true;
+      allow create: if isAuthenticated();
+      allow update, delete: if isAuthenticated() && (
+        resource.data.createdBy.uid == request.auth.uid || isAdmin()
+      );
+    }
+
+    // Solicitudes de Participación
+    match /participation_requests/{requestId} {
+      allow read: if true; // Permite a la persona consultar su solicitud mediante token
+      allow create: if isAuthenticated();
+      allow update: if true; // Permite confirmar/rechazar con token seguro
+      allow delete: if isAdmin();
+    }
+
+    // Notificaciones
+    match /notifications/{notifId} {
+      allow read: if isAuthenticated() && (
+        resource.data.userId == request.auth.uid || 
+        resource.data.userId == 'ALL_ADMINS'
+      );
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated();
+    }
+
+    // Logs de Auditoría (Solo append por usuarios autenticados, lectura para admins)
+    match /audit_logs/{logId} {
+      allow read: if isAdmin();
+      allow create: if isAuthenticated();
+      allow update, delete: if false; // Inmutable
+    }
+  }
+}
