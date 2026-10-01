@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, UserPlus, Mail, Briefcase, Building } from 'lucide-react';
 import { Person } from '../../types';
+import { useAuth } from '../../context/AuthContext';
 
 interface PersonModalProps {
   isOpen: boolean;
@@ -15,6 +16,7 @@ export const PersonModal: React.FC<PersonModalProps> = ({
   onSave,
   personToEdit,
 }) => {
+  const { isAdmin } = useAuth();
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
@@ -48,6 +50,9 @@ export const PersonModal: React.FC<PersonModalProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!isAdmin) {
+      return alert('Acceso restringido:\n\nSolo el perfil Superadministrador puede registrar o editar personas en el directorio.');
+    }
     if (!firstName.trim() || !lastName.trim() || !email.trim()) {
       return alert('Por favor ingresa nombre, apellido y correo electrónico.');
     }

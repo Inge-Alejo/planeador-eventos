@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Person, EventEntity } from '../../types';
-import { Users, Plus, Mail, Briefcase, Building, Edit, Calendar } from 'lucide-react';
+import { Users, Plus, Mail, Briefcase, Building, Edit, Calendar, Trash2 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
 interface PeopleListProps {
@@ -8,6 +8,7 @@ interface PeopleListProps {
   events: EventEntity[];
   onOpenCreatePerson: () => void;
   onEditPerson: (person: Person) => void;
+  onDeletePerson: (personId: string) => Promise<void>;
   onSelectEvent: (eventId: string) => void;
 }
 
@@ -16,6 +17,7 @@ export const PeopleList: React.FC<PeopleListProps> = ({
   events,
   onOpenCreatePerson,
   onEditPerson,
+  onDeletePerson,
   onSelectEvent,
 }) => {
   const { isAdmin } = useAuth();
@@ -99,13 +101,26 @@ export const PeopleList: React.FC<PeopleListProps> = ({
                   </div>
 
                   {isAdmin && (
-                    <button
-                      onClick={() => onEditPerson(person)}
-                      className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg"
-                      title="Editar información"
-                    >
-                      <Edit className="w-4 h-4" />
-                    </button>
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => onEditPerson(person)}
+                        className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors"
+                        title="Editar información (Solo Superadmin)"
+                      >
+                        <Edit className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => {
+                          if (window.confirm(`¿Estás seguro de eliminar a ${person.firstName} ${person.lastName} (${person.email})?\n\nEsta acción no se puede deshacer.`)) {
+                            onDeletePerson(person.id);
+                          }
+                        }}
+                        className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                        title="Eliminar persona (Solo Superadmin)"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   )}
                 </div>
 

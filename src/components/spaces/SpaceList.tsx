@@ -10,6 +10,7 @@ import {
   Sparkles,
   Edit,
   Layers,
+  Trash2,
 } from 'lucide-react';
 import { getBogotaToday, getBogotaCurrentTime, timeStringToMinutes, format12Hour } from '../../lib/timezone';
 import { useAuth } from '../../context/AuthContext';
@@ -19,6 +20,7 @@ interface SpaceListProps {
   events: EventEntity[];
   onOpenCreateSpace: () => void;
   onEditSpace: (space: Space) => void;
+  onDeleteSpace: (spaceId: string) => Promise<void>;
   onSelectEvent: (eventId: string) => void;
   onReserveSpace: (spaceId: string) => void;
 }
@@ -28,6 +30,7 @@ export const SpaceList: React.FC<SpaceListProps> = ({
   events,
   onOpenCreateSpace,
   onEditSpace,
+  onDeleteSpace,
   onSelectEvent,
   onReserveSpace,
 }) => {
@@ -137,13 +140,26 @@ export const SpaceList: React.FC<SpaceListProps> = ({
                     )}
 
                     {isAdmin && (
-                      <button
-                        onClick={() => onEditSpace(space)}
-                        className="p-1 text-slate-400 hover:text-slate-700 rounded-lg ml-1"
-                        title="Editar espacio"
-                      >
-                        <Edit className="w-3.5 h-3.5" />
-                      </button>
+                      <div className="flex items-center gap-0.5 ml-1">
+                        <button
+                          onClick={() => onEditSpace(space)}
+                          className="p-1 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition-colors"
+                          title="Editar espacio (Solo Superadmin)"
+                        >
+                          <Edit className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => {
+                            if (window.confirm(`¿Estás seguro de eliminar el espacio "${space.name}"?\n\nEsta acción no se puede deshacer.`)) {
+                              onDeleteSpace(space.id);
+                            }
+                          }}
+                          className="p-1 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition-colors"
+                          title="Eliminar espacio (Solo Superadmin)"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     )}
                   </div>
                 </div>

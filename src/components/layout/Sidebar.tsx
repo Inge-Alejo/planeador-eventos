@@ -33,6 +33,7 @@ interface SidebarProps {
   pendingRequestsCount: number;
   activeConflictsCount: number;
   pendingUsersCount?: number;
+  unreadNotificationsCount?: number;
   isOpenMobile: boolean;
   onCloseMobile: () => void;
 }
@@ -43,6 +44,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   pendingRequestsCount,
   activeConflictsCount,
   pendingUsersCount = 0,
+  unreadNotificationsCount = 0,
   isOpenMobile,
   onCloseMobile,
 }) => {
@@ -61,7 +63,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
       badge: pendingRequestsCount > 0 ? pendingRequestsCount : undefined,
       badgeColor: 'bg-amber-500',
     },
-    { id: 'notificaciones' as ActiveTab, label: 'Notificaciones', icon: Bell },
+    {
+      id: 'notificaciones' as ActiveTab,
+      label: 'Notificaciones',
+      icon: Bell,
+      badge: unreadNotificationsCount > 0 ? unreadNotificationsCount : undefined,
+      badgeColor: 'bg-rose-500',
+    },
     { id: 'reportes' as ActiveTab, label: 'Reportes', icon: FileSpreadsheet },
     {
       id: 'usuarios' as ActiveTab,

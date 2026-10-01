@@ -17,6 +17,7 @@ import { SpaceModal } from './components/spaces/SpaceModal';
 import { PersonModal } from './components/people/PersonModal';
 import { SimulatedEmailModal } from './components/requests/SimulatedEmailModal';
 import { UserManagementView } from './components/users/UserManagementView';
+import { NotificationsView } from './components/notifications/NotificationsView';
 import { AuthModal } from './components/auth/AuthModal';
 import { LoginScreen } from './components/auth/LoginScreen';
 import { EventEntity, Space, Person, ParticipationRequest } from './types';
@@ -39,7 +40,9 @@ const MainApp: React.FC = () => {
     saveEvent,
     deleteEvent,
     saveSpace,
+    deleteSpace,
     savePerson,
+    deletePerson,
     createParticipationRequest,
     respondToParticipationRequest,
     markNotificationAsRead,
@@ -177,6 +180,25 @@ const MainApp: React.FC = () => {
     setActiveTabFilter(filter);
   };
 
+  // Filtrado exclusivo de notificaciones por usuario para Sidebar y Centro de Notificaciones
+  const userNotifications = useMemo(() => {
+    if (!user) return [];
+    const email = user.email.toLowerCase();
+    const uid = user.uid;
+    if (isAdmin) {
+      return notifications.filter(
+        (n) => n.userId === 'ALL_ADMINS' || n.userId === uid || (n.userId && n.userId.toLowerCase() === email)
+      );
+    }
+    return notifications.filter(
+      (n) => n.userId === uid || (n.userId && n.userId.toLowerCase() === email)
+    );
+  }, [notifications, user, isAdmin]);
+
+  const unreadNotificationsCount = useMemo(() => {
+    return userNotifications.filter((n) => !n.read).length;
+  }, [userNotifications]);
+
   // Si no ha iniciado sesión ni ha elegido continuar como visitante, mostrar la pantalla de Login
   if (!user && !isGuest) {
     return <LoginScreen />;
@@ -194,6 +216,7 @@ const MainApp: React.FC = () => {
         pendingRequestsCount={metrics.pendingRequestsCount}
         activeConflictsCount={metrics.activeConflictsCount}
         pendingUsersCount={pendingUsersCount}
+        unreadNotificationsCount={unreadNotificationsCount}
         isOpenMobile={isMobileSidebarOpen}
         onCloseMobile={() => setIsMobileSidebarOpen(false)}
       />
@@ -300,6 +323,7 @@ const MainApp: React.FC = () => {
                 setSpaceToEdit(sp);
                 setIsSpaceModalOpen(true);
               }}
+              onDeleteSpace={deleteSpace}
               onSelectEvent={(evtId) => setSelectedEventId(evtId)}
               onReserveSpace={(spaceId) => handleOpenCreateEvent({ spaceId })}
             />
@@ -317,6 +341,7 @@ const MainApp: React.FC = () => {
                 setPersonToEdit(p);
                 setIsPersonModalOpen(true);
               }}
+              onDeletePerson={deletePerson}
               onSelectEvent={(evtId) => setSelectedEventId(evtId)}
             />
           )}
@@ -325,6 +350,15 @@ const MainApp: React.FC = () => {
             <RequestsList
               requests={requests}
               onOpenEmailModal={(req) => setSimulatedEmailRequest(req)}
+              onSelectEvent={(evtId) => setSelectedEventId(evtId)}
+            />
+          )}
+
+          {activeTab === 'notificaciones' && (
+            <NotificationsView
+              notifications={notifications}
+              onMarkNotificationRead={markNotificationAsRead}
+              onMarkAllNotificationsRead={markAllNotificationsAsRead}
               onSelectEvent={(evtId) => setSelectedEventId(evtId)}
             />
           )}

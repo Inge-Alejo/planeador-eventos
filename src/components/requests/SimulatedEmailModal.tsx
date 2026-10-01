@@ -18,6 +18,7 @@ import {
 import { ParticipationRequest } from '../../types';
 import { formatFriendlyDate, format12Hour } from '../../lib/timezone';
 import { sendParticipationEmail } from '../../services/emailService';
+import { useAuth } from '../../context/AuthContext';
 import confetti from 'canvas-confetti';
 
 interface SimulatedEmailModalProps {
@@ -31,6 +32,7 @@ export const SimulatedEmailModal: React.FC<SimulatedEmailModalProps> = ({
   onClose,
   onRespond,
 }) => {
+  const { user, isAdmin } = useAuth();
   const [responseNotes, setResponseNotes] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -38,6 +40,10 @@ export const SimulatedEmailModal: React.FC<SimulatedEmailModalProps> = ({
   const [autoSendResult, setAutoSendResult] = useState<{ success: boolean; message: string } | null>(null);
 
   if (!request) return null;
+
+  const userEmail = (user?.email || '').toLowerCase().trim();
+  const targetEmail = (request.personEmail || '').toLowerCase().trim();
+  const canRespond = Boolean(isAdmin || (user && userEmail === targetEmail));
 
   const handleSendAutomatic = async () => {
     setIsSendingAuto(true);
@@ -77,6 +83,10 @@ Facultad de Medicina - Universidad de Antioquia
 Planeador de Eventos Académicos`;
 
   const handleAction = async (status: 'confirmada' | 'rechazada') => {
+    if (!canRespond) {
+      alert(`Acceso no autorizado:\n\nSolo la persona asignada (${request.personEmail}) o el Superadministrador pueden aceptar o rechazar esta solicitud.`);
+      return;
+    }
     setIsProcessing(true);
     try {
       await onRespond(request.token, status, responseNotes);
@@ -300,8 +310,8 @@ Planeador de Eventos Académicos`;
                 </span>
               </div>
 
-              {/* Caja de notas opcionales */}
-              {request.status === 'pendiente' && (
+              {/* Caja de notas opcionales (Solo quien puede responder) */}
+              {request.status === 'pendiente' && canRespond && (
                 <div className="mt-4">
                   <label className="block text-[11px] font-semibold text-slate-600 mb-1">
                     Nota o motivo de respuesta (Opcional):
@@ -316,26 +326,40 @@ Planeador de Eventos Académicos`;
                 </div>
               )}
 
-              {/* Botones de Acción Seguros de 1 Clic */}
+              {/* Botones de Acción Seguros de 1 Clic o Alerta de Restricción */}
               {request.status === 'pendiente' ? (
-                <div className="mt-5 grid grid-cols-2 gap-3">
-                  <button
-                    onClick={() => handleAction('confirmada')}
-                    disabled={isProcessing}
-                    className="flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-sm active:scale-[0.98] transition-all"
-                  >
-                    <CheckCircle2 className="w-4 h-4" />
-                    <span>Confirmar Asistencia</span>
-                  </button>
-                  <button
-                    onClick={() => handleAction('rechazada')}
-                    disabled={isProcessing}
-                    className="flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs shadow-sm active:scale-[0.98] transition-all"
-                  >
-                    <XCircle className="w-4 h-4" />
-                    <span>Rechazar Participación</span>
-                  </button>
-                </div>
+                canRespond ? (
+                  <div className="mt-5 grid grid-cols-2 gap-3">
+                    <button
+                      onClick={() => handleAction('confirmada')}
+                      disabled={isProcessing}
+                      className="flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-sm active:scale-[0.98] transition-all"
+                    >
+                      <CheckCircle2 className="w-4 h-4" />
+                      <span>Confirmar Asistencia</span>
+                    </button>
+                    <button
+                      onClick={() => handleAction('rechazada')}
+                      disabled={isProcessing}
+                      className="flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs shadow-sm active:scale-[0.98] transition-all"
+                    >
+                      <XCircle className="w-4 h-4" />
+                      <span>Rechazar Participación</span>
+                    </button>
+                  </div>
+                ) : (
+                  <div className="mt-4 p-3.5 rounded-xl bg-amber-50/90 border border-amber-200/80 text-amber-900 text-xs">
+                    <div className="flex items-start gap-2.5">
+                      <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                      <div>
+                        <p className="font-bold text-amber-900">Respuesta Exclusiva del Destinatario</p>
+                        <p className="text-[11px] text-amber-800 mt-0.5 leading-relaxed">
+                          Esta convocatoria fue asignada a <strong className="font-semibold">{request.personName}</strong> (<span className="font-mono text-[10px]">{request.personEmail}</span>). Por seguridad y trazabilidad, únicamente esta persona o el <strong className="font-semibold">Superadministrador</strong> tienen autorización para responderla.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )
               ) : (
                 <div className="mt-4 p-3 rounded-xl bg-slate-100 text-center text-xs text-slate-500">
                   Esta solicitud fue respondida el{' '}

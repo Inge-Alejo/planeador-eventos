@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Building2, Layers, MapPin, Users, Sparkles } from 'lucide-react';
 import { Space, SpaceType, SpaceStatus } from '../../types';
+import { useAuth } from '../../context/AuthContext';
 
 interface SpaceModalProps {
   isOpen: boolean;
@@ -15,6 +16,7 @@ export const SpaceModal: React.FC<SpaceModalProps> = ({
   onSave,
   spaceToEdit,
 }) => {
+  const { isAdmin } = useAuth();
   const [name, setName] = useState('');
   const [type, setType] = useState<SpaceType>('auditorio');
   const [location, setLocation] = useState('');
@@ -51,6 +53,9 @@ export const SpaceModal: React.FC<SpaceModalProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!isAdmin) {
+      return alert('Acceso restringido:\n\nSolo el perfil Superadministrador puede crear o editar espacios físicos.');
+    }
     if (!name.trim()) return alert('Por favor ingresa el nombre del espacio.');
 
     setIsSubmitting(true);

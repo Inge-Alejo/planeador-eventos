@@ -901,6 +901,7 @@ export async function createParticipationRequest(
     try {
       await setDoc(doc(db, 'participation_requests', id), newReq);
       try {
+        // Notificación para Administradores
         await addDoc(collection(db, 'notifications'), {
           userId: 'ALL_ADMINS',
           type: 'solicitud',
@@ -910,6 +911,19 @@ export async function createParticipationRequest(
           read: false,
           createdAt: now,
         });
+
+        // Notificación exclusiva para la persona invitada
+        if (req.personEmail) {
+          await addDoc(collection(db, 'notifications'), {
+            userId: req.personEmail.toLowerCase().trim(),
+            type: 'solicitud',
+            title: 'Convocatoria a Evento Institucional',
+            message: `Has sido invitado/a a participar en el evento "${req.eventTitle}" (${req.eventDate} a las ${req.eventStartTime}).`,
+            eventId: req.eventId,
+            read: false,
+            createdAt: now,
+          });
+        }
       } catch (e) {
         console.warn('Error guardando notif en Firestore:', e);
       }
@@ -931,6 +945,16 @@ export async function createParticipationRequest(
     message: `Se ha invitado a ${req.personName} para el evento "${req.eventTitle}".`,
     eventId: req.eventId,
   });
+
+  if (req.personEmail) {
+    addNotification({
+      userId: req.personEmail.toLowerCase().trim(),
+      type: 'solicitud',
+      title: 'Convocatoria a Evento Institucional',
+      message: `Has sido invitado/a a participar en el evento "${req.eventTitle}" (${req.eventDate} a las ${req.eventStartTime}).`,
+      eventId: req.eventId,
+    });
+  }
 
   // Enviar correo automático mediante Brevo en segundo plano
   sendParticipationEmail(newReq).catch((err) => {
@@ -971,6 +995,18 @@ export async function respondToParticipationRequest(
             read: false,
             createdAt: now,
           });
+
+          if (reqData.personEmail) {
+            await addDoc(collection(db, 'notifications'), {
+              userId: reqData.personEmail.toLowerCase().trim(),
+              type: newStatus === 'confirmada' ? 'confirmacion' : 'rechazo',
+              title: newStatus === 'confirmada' ? 'Asistencia Confirmada' : 'Invitación Declinada',
+              message: `Tu respuesta (${newStatus === 'confirmada' ? 'Confirmada' : 'Rechazada'}) para el evento "${reqData.eventTitle}" fue registrada con éxito.`,
+              eventId: reqData.eventId,
+              read: false,
+              createdAt: now,
+            });
+          }
         } catch (e) {
           console.warn('Error guardando notificación en Firestore:', e);
         }
@@ -1020,6 +1056,16 @@ export async function respondToParticipationRequest(
     eventId: target.eventId,
   });
 
+  if (target.personEmail) {
+    addNotification({
+      userId: target.personEmail.toLowerCase().trim(),
+      type: newStatus === 'confirmada' ? 'confirmacion' : 'rechazo',
+      title: newStatus === 'confirmada' ? 'Asistencia Confirmada' : 'Invitación Declinada',
+      message: `Tu respuesta (${newStatus === 'confirmada' ? 'Confirmada' : 'Rechazada'}) para el evento "${target.eventTitle}" fue registrada con éxito.`,
+      eventId: target.eventId,
+    });
+  }
+
   if (newStatus === 'confirmada') {
     const events = load<EventEntity[]>(STORAGE_KEYS.EVENTS, initialEvents);
     const evt = events.find((e) => e.id === target.eventId);
@@ -1033,21 +1079,39 @@ export async function respondToParticipationRequest(
   return target;
 }
 
-// Notificaciones
-export function addNotification(notif: Omit<AppNotification, 'id' | 'read' | 'createdAt'>): void {
-  const current = load<AppNotification[]>(STORAGE_KEYS.NOTIFICATIONS, initialNotifications);
+// Notificaciones con persistencia Firestore y Local
+export async function addNotification(notif: Omit<AppNotification, 'id' | 'read' | 'createdAt'>): Promise<void> {
+  const id = `notif-${Date.now()}`;
+  const now = new Date().toISOString();
   const newNotif: AppNotification = {
     ...notif,
-    id: `notif-${Date.now()}`,
+    id,
     read: false,
-    createdAt: new Date().toISOString(),
+    createdAt: now,
   };
+
+  if (isFirebaseConfigured && db) {
+    try {
+      await setDoc(doc(db, 'notifications', id), newNotif);
+    } catch (e) {
+      console.warn('Error guardando notificación en Firestore:', e);
+    }
+  }
+
+  const current = load<AppNotification[]>(STORAGE_KEYS.NOTIFICATIONS, initialNotifications);
   current.unshift(newNotif);
   save(STORAGE_KEYS.NOTIFICATIONS, current);
   notifListeners.forEach((fn) => fn(current));
 }
 
-export function markNotificationAsRead(notifId: string): void {
+export async function markNotificationAsRead(notifId: string): Promise<void> {
+  if (isFirebaseConfigured && db) {
+    try {
+      await updateDoc(doc(db, 'notifications', notifId), { read: true });
+    } catch (e) {
+      console.warn('Error marcando notif como leída en Firestore:', e);
+    }
+  }
   const current = load<AppNotification[]>(STORAGE_KEYS.NOTIFICATIONS, initialNotifications);
   const item = current.find((n) => n.id === notifId);
   if (item) {
@@ -1057,9 +1121,32 @@ export function markNotificationAsRead(notifId: string): void {
   }
 }
 
-export function markAllNotificationsAsRead(): void {
+export async function markAllNotificationsAsRead(targetIds?: string[]): Promise<void> {
+  if (isFirebaseConfigured && db) {
+    const firestore = db;
+    try {
+      if (targetIds && targetIds.length > 0) {
+        await Promise.all(
+          targetIds.map((id) =>
+            updateDoc(doc(firestore, 'notifications', id), { read: true }).catch(() => {})
+          )
+        );
+      } else {
+        const snap = await getDocs(collection(firestore, 'notifications'));
+        await Promise.all(
+          snap.docs.map((d) => updateDoc(doc(firestore, 'notifications', d.id), { read: true }).catch(() => {}))
+        );
+      }
+    } catch (e) {
+      console.warn('Error marcando todas las notificaciones como leídas en Firestore:', e);
+    }
+  }
   const current = load<AppNotification[]>(STORAGE_KEYS.NOTIFICATIONS, initialNotifications);
-  current.forEach((n) => (n.read = true));
+  current.forEach((n) => {
+    if (!targetIds || targetIds.includes(n.id)) {
+      n.read = true;
+    }
+  });
   save(STORAGE_KEYS.NOTIFICATIONS, current);
   notifListeners.forEach((fn) => fn(current));
 }

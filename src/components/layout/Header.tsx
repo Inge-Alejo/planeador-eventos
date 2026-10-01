@@ -25,7 +25,7 @@ interface HeaderProps {
   searchQuery: string;
   notifications: AppNotification[];
   onMarkNotificationRead: (id: string) => void;
-  onMarkAllNotificationsRead: () => void;
+  onMarkAllNotificationsRead: (targetIds?: string[]) => void;
   onToggleMobileSidebar: () => void;
   onSelectEventFromNotification?: (eventId: string) => void;
 }
@@ -53,7 +53,57 @@ export const Header: React.FC<HeaderProps> = ({
   const [showNotifications, setShowNotifications] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
 
-  const unreadCount = notifications.filter((n) => !n.read).length;
+  const notificationRef = React.useRef<HTMLDivElement>(null);
+  const profileMenuRef = React.useRef<HTMLDivElement>(null);
+
+  // Filtrado exclusivo de notificaciones por usuario
+  const userNotifications = React.useMemo(() => {
+    if (!user) return [];
+    const email = user.email.toLowerCase();
+    const uid = user.uid;
+    if (isAdmin) {
+      return notifications.filter(
+        (n) => n.userId === 'ALL_ADMINS' || n.userId === uid || (n.userId && n.userId.toLowerCase() === email)
+      );
+    }
+    return notifications.filter(
+      (n) => n.userId === uid || (n.userId && n.userId.toLowerCase() === email)
+    );
+  }, [notifications, user, isAdmin]);
+
+  const unreadCount = userNotifications.filter((n) => !n.read).length;
+
+  // Cierre automático al hacer clic por fuera o presionar Escape
+  React.useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (
+        notificationRef.current &&
+        !notificationRef.current.contains(e.target as Node)
+      ) {
+        setShowNotifications(false);
+      }
+      if (
+        profileMenuRef.current &&
+        !profileMenuRef.current.contains(e.target as Node)
+      ) {
+        setShowProfileMenu(false);
+      }
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setShowNotifications(false);
+        setShowProfileMenu(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, []);
 
   const handleCreateClick = () => {
     if (!canEdit) {
@@ -138,7 +188,7 @@ export const Header: React.FC<HeaderProps> = ({
         </button>
 
         {/* Centro de Notificaciones */}
-        <div className="relative">
+        <div className="relative" ref={notificationRef}>
           <button
             onClick={() => {
               setShowNotifications(!showNotifications);
@@ -168,8 +218,8 @@ export const Header: React.FC<HeaderProps> = ({
                 </div>
                 {unreadCount > 0 && (
                   <button
-                    onClick={onMarkAllNotificationsRead}
-                    className="text-xs text-indigo-600 hover:text-indigo-800 font-medium"
+                    onClick={() => onMarkAllNotificationsRead(userNotifications.map((n) => n.id))}
+                    className="text-xs text-indigo-600 hover:text-indigo-800 font-medium transition-colors"
                   >
                     Marcar leídas
                   </button>
@@ -177,12 +227,12 @@ export const Header: React.FC<HeaderProps> = ({
               </div>
 
               <div className="max-h-80 overflow-y-auto divide-y divide-slate-100 py-1">
-                {notifications.length === 0 ? (
+                {userNotifications.length === 0 ? (
                   <div className="py-8 text-center text-xs text-slate-400">
                     No tienes notificaciones en este momento.
                   </div>
                 ) : (
-                  notifications.map((notif) => (
+                  userNotifications.map((notif) => (
                     <div
                       key={notif.id}
                       onClick={() => {
@@ -232,7 +282,7 @@ export const Header: React.FC<HeaderProps> = ({
             <span>Iniciar Sesión</span>
           </button>
         ) : (
-          <div className="relative">
+          <div className="relative" ref={profileMenuRef}>
             <button
               onClick={() => {
                 setShowProfileMenu(!showProfileMenu);
