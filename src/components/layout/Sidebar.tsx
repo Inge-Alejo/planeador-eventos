@@ -12,11 +12,14 @@ import {
   Sparkles,
   ShieldCheck,
   X,
+  CheckSquare,
+  Activity,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
 export type ActiveTab =
   | 'dashboard'
+  | 'mis_pendientes'
   | 'calendario'
   | 'eventos'
   | 'espacios'
@@ -25,7 +28,8 @@ export type ActiveTab =
   | 'notificaciones'
   | 'reportes'
   | 'auditoria'
-  | 'usuarios';
+  | 'usuarios'
+  | 'monitoreo';
 
 interface SidebarProps {
   activeTab: ActiveTab;
@@ -52,10 +56,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   const navItems = [
     { id: 'dashboard' as ActiveTab, label: 'Dashboard', icon: LayoutDashboard },
+    {
+      id: 'mis_pendientes' as ActiveTab,
+      label: 'Mis Pendientes',
+      icon: CheckSquare,
+    },
     { id: 'calendario' as ActiveTab, label: 'Calendario', icon: Calendar },
     { id: 'eventos' as ActiveTab, label: 'Eventos / Planeación', icon: CalendarCheck },
     { id: 'espacios' as ActiveTab, label: 'Espacios', icon: Building2 },
-    { id: 'personas' as ActiveTab, label: 'Personas', icon: Users },
+    { id: 'personas' as ActiveTab, label: 'Personas y Grupos', icon: Users },
     {
       id: 'solicitudes' as ActiveTab,
       label: 'Solicitudes',
@@ -78,6 +87,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
       adminOnly: true,
       badge: pendingUsersCount > 0 ? pendingUsersCount : undefined,
       badgeColor: 'bg-amber-500',
+    },
+    {
+      id: 'monitoreo' as ActiveTab,
+      label: 'Monitoreo Cloud / BD',
+      icon: Activity,
+      adminOnly: true,
     },
     { id: 'auditoria' as ActiveTab, label: 'Auditoría', icon: History, adminOnly: true },
   ];

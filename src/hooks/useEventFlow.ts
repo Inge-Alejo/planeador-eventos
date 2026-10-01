@@ -10,6 +10,8 @@ import {
   DashboardMetrics,
   ConflictItem,
   UserProfile,
+  PeopleGroup,
+  PersonalTask,
 } from '../types';
 import {
   initializeSeedData,
@@ -20,6 +22,8 @@ import {
   subscribeToNotifications,
   subscribeToAudit,
   subscribeToUsers,
+  subscribeToGroups,
+  subscribeToPersonalTasks,
   updateUserRoleAndStatus,
   saveEvent,
   deleteEvent,
@@ -31,14 +35,21 @@ import {
   respondToParticipationRequest,
   markNotificationAsRead,
   markAllNotificationsAsRead,
+  saveGroup,
+  deleteGroup,
+  savePersonalTask,
+  togglePersonalTask,
+  deletePersonalTask,
 } from '../services/store';
 import { detectConflicts } from '../services/conflictEngine';
 import { getBogotaToday, getBogotaCurrentTime, timeStringToMinutes } from '../lib/timezone';
 
-export function useEventFlow() {
+export function useEventFlow(currentUserId?: string) {
   const [events, setEvents] = useState<EventEntity[]>([]);
   const [spaces, setSpaces] = useState<Space[]>([]);
   const [people, setPeople] = useState<Person[]>([]);
+  const [groups, setGroups] = useState<PeopleGroup[]>([]);
+  const [personalTasks, setPersonalTasks] = useState<PersonalTask[]>([]);
   const [requests, setRequests] = useState<ParticipationRequest[]>([]);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
@@ -52,10 +63,18 @@ export function useEventFlow() {
     const unsubEvents = subscribeToEvents(setEvents);
     const unsubSpaces = subscribeToSpaces(setSpaces);
     const unsubPeople = subscribeToPeople(setPeople);
+    const unsubGroups = subscribeToGroups(setGroups);
     const unsubRequests = subscribeToRequests(setRequests);
     const unsubNotifs = subscribeToNotifications(setNotifications);
     const unsubAudit = subscribeToAudit(setAuditLogs);
     const unsubUsers = subscribeToUsers(setUsers);
+
+    let unsubPersonalTasks = () => {};
+    if (currentUserId) {
+      unsubPersonalTasks = subscribeToPersonalTasks(currentUserId, setPersonalTasks);
+    } else {
+      setPersonalTasks([]);
+    }
 
     setLoading(false);
 
@@ -63,12 +82,14 @@ export function useEventFlow() {
       unsubEvents();
       unsubSpaces();
       unsubPeople();
+      unsubGroups();
+      unsubPersonalTasks();
       unsubRequests();
       unsubNotifs();
       unsubAudit();
       unsubUsers();
     };
-  }, []);
+  }, [currentUserId]);
 
   // Calcular métricas del Dashboard en vivo
   const metrics: DashboardMetrics = useMemo(() => {
@@ -168,6 +189,8 @@ export function useEventFlow() {
     events,
     spaces,
     people,
+    groups,
+    personalTasks,
     requests,
     notifications,
     auditLogs,
@@ -182,6 +205,11 @@ export function useEventFlow() {
     deleteSpace,
     savePerson,
     deletePerson,
+    saveGroup,
+    deleteGroup,
+    savePersonalTask,
+    togglePersonalTask,
+    deletePersonalTask,
     createParticipationRequest,
     respondToParticipationRequest,
     markNotificationAsRead,

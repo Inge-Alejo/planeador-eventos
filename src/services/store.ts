@@ -3,6 +3,8 @@ import {
   EventEntity,
   Space,
   Person,
+  PeopleGroup,
+  PersonalTask,
   ParticipationRequest,
   AppNotification,
   AuditLog,
@@ -31,6 +33,8 @@ const STORAGE_KEYS = {
   EVENTS: 'eventflow_events',
   SPACES: 'eventflow_spaces',
   PEOPLE: 'eventflow_people',
+  GROUPS: 'eventflow_groups',
+  PERSONAL_TASKS: 'eventflow_personal_tasks',
   REQUESTS: 'eventflow_requests',
   NOTIFICATIONS: 'eventflow_notifications',
   AUDIT: 'eventflow_audit',
@@ -321,6 +325,62 @@ const initialUsers: UserProfile[] = [
   },
 ];
 
+const initialGroups: PeopleGroup[] = [
+  {
+    id: 'grp-1',
+    name: 'Comité Curricular de Medicina',
+    description: 'Docentes encargados de diseño y ajuste de planes de estudio',
+    color: '#4F46E5', // Indigo
+    memberIds: ['person-1', 'person-2', 'person-3'],
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: 'grp-2',
+    name: 'Producción de Contenidos y Medios',
+    description: 'Equipo técnico de grabación, videoclases y soporte tecnológico',
+    color: '#059669', // Emerald
+    memberIds: ['person-4', 'person-5'],
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: 'grp-3',
+    name: 'Semilleros e Investigación',
+    description: 'Coordinadores de proyectos científicos y bioética de la Facultad',
+    color: '#D97706', // Amber
+    memberIds: ['person-2', 'person-3'],
+    createdAt: new Date().toISOString(),
+  },
+];
+
+const initialPersonalTasks: PersonalTask[] = [
+  {
+    id: 'task-1',
+    userId: 'admin-1',
+    title: 'Confirmar aforo y micrófonos en Auditorio Mayor',
+    description: 'Validar requerimientos técnicos para ponentes antes del Simposio.',
+    dueDate: today,
+    dueTime: '13:00',
+    priority: 'alta',
+    status: 'pendiente',
+    category: 'evento',
+    eventId: 'evt-2',
+    eventTitle: 'Simposio Internacional de Medicina',
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: 'task-2',
+    userId: 'admin-1',
+    title: 'Revisar actas y temas del Comité Curricular',
+    description: 'Consolidar aportes de los docentes previo a la reunión general.',
+    dueDate: today,
+    dueTime: '09:30',
+    priority: 'media',
+    status: 'pendiente',
+    category: 'tarea',
+    createdAt: new Date().toISOString(),
+  },
+];
+
 // BroadcastChannel para sincronizar pestañas en tiempo real local
 const channel = typeof window !== 'undefined' && 'BroadcastChannel' in window
   ? new BroadcastChannel('eventflow_realtime_sync')
@@ -352,6 +412,8 @@ type Listener<T> = (data: T) => void;
 const eventListeners = new Set<Listener<EventEntity[]>>();
 const spaceListeners = new Set<Listener<Space[]>>();
 const peopleListeners = new Set<Listener<Person[]>>();
+const groupListeners = new Set<Listener<PeopleGroup[]>>();
+const personalTaskListeners = new Set<Listener<PersonalTask[]>>();
 const requestListeners = new Set<Listener<ParticipationRequest[]>>();
 const notifListeners = new Set<Listener<AppNotification[]>>();
 const auditListeners = new Set<Listener<AuditLog[]>>();
@@ -362,6 +424,8 @@ export function initializeSeedData(): void {
   if (typeof window === 'undefined') return;
   if (!localStorage.getItem(STORAGE_KEYS.SPACES)) save(STORAGE_KEYS.SPACES, initialSpaces);
   if (!localStorage.getItem(STORAGE_KEYS.PEOPLE)) save(STORAGE_KEYS.PEOPLE, initialPeople);
+  if (!localStorage.getItem(STORAGE_KEYS.GROUPS)) save(STORAGE_KEYS.GROUPS, initialGroups);
+  if (!localStorage.getItem(STORAGE_KEYS.PERSONAL_TASKS)) save(STORAGE_KEYS.PERSONAL_TASKS, initialPersonalTasks);
   if (!localStorage.getItem(STORAGE_KEYS.EVENTS)) save(STORAGE_KEYS.EVENTS, initialEvents);
   if (!localStorage.getItem(STORAGE_KEYS.REQUESTS)) save(STORAGE_KEYS.REQUESTS, initialRequests);
   if (!localStorage.getItem(STORAGE_KEYS.NOTIFICATIONS)) save(STORAGE_KEYS.NOTIFICATIONS, initialNotifications);
@@ -377,6 +441,8 @@ if (channel) {
       if (key === STORAGE_KEYS.EVENTS) eventListeners.forEach((fn) => fn(load(STORAGE_KEYS.EVENTS, [])));
       if (key === STORAGE_KEYS.SPACES) spaceListeners.forEach((fn) => fn(load(STORAGE_KEYS.SPACES, [])));
       if (key === STORAGE_KEYS.PEOPLE) peopleListeners.forEach((fn) => fn(load(STORAGE_KEYS.PEOPLE, [])));
+      if (key === STORAGE_KEYS.GROUPS) groupListeners.forEach((fn) => fn(load(STORAGE_KEYS.GROUPS, [])));
+      if (key === STORAGE_KEYS.PERSONAL_TASKS) personalTaskListeners.forEach((fn) => fn(load(STORAGE_KEYS.PERSONAL_TASKS, [])));
       if (key === STORAGE_KEYS.REQUESTS) requestListeners.forEach((fn) => fn(load(STORAGE_KEYS.REQUESTS, [])));
       if (key === STORAGE_KEYS.NOTIFICATIONS) notifListeners.forEach((fn) => fn(load(STORAGE_KEYS.NOTIFICATIONS, [])));
       if (key === STORAGE_KEYS.AUDIT) auditListeners.forEach((fn) => fn(load(STORAGE_KEYS.AUDIT, [])));
@@ -512,6 +578,69 @@ export function subscribeToPeople(callback: (people: Person[]) => void): () => v
   callback(load(STORAGE_KEYS.PEOPLE, initialPeople));
   peopleListeners.add(callback);
   return () => peopleListeners.delete(callback);
+}
+
+export function subscribeToGroups(callback: (groups: PeopleGroup[]) => void): () => void {
+  if (isFirebaseConfigured && db) {
+    const firestore = db;
+    let hasSeeded = false;
+    const unsub = onSnapshot(
+      collection(firestore, 'groups'),
+      async (snapshot) => {
+        if (snapshot.empty && !hasSeeded) {
+          hasSeeded = true;
+          if (auth?.currentUser) {
+            for (const grp of initialGroups) {
+              try {
+                await setDoc(doc(firestore, 'groups', grp.id), grp, { merge: true });
+              } catch (e) {
+                console.warn('Error sembrando grupo en Firestore:', e);
+              }
+            }
+          }
+          callback(initialGroups);
+          return;
+        }
+        const data = snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as PeopleGroup));
+        callback(data);
+      },
+      (error) => {
+        console.warn('Firestore groups subscription error, fallback local:', error);
+        callback(load(STORAGE_KEYS.GROUPS, initialGroups));
+      }
+    );
+    return unsub;
+  }
+  callback(load(STORAGE_KEYS.GROUPS, initialGroups));
+  groupListeners.add(callback);
+  return () => groupListeners.delete(callback);
+}
+
+export function subscribeToPersonalTasks(userId: string, callback: (tasks: PersonalTask[]) => void): () => void {
+  if (isFirebaseConfigured && db) {
+    const firestore = db;
+    const q = query(collection(firestore, 'personal_tasks'), where('userId', '==', userId));
+    const unsub = onSnapshot(
+      q,
+      (snapshot) => {
+        const data = snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as PersonalTask));
+        callback(data);
+      },
+      (error) => {
+        console.warn('Firestore personal_tasks subscription error, fallback local:', error);
+        const allTasks = load<PersonalTask[]>(STORAGE_KEYS.PERSONAL_TASKS, initialPersonalTasks);
+        callback(allTasks.filter((t) => t.userId === userId));
+      }
+    );
+    return unsub;
+  }
+  const allTasks = load<PersonalTask[]>(STORAGE_KEYS.PERSONAL_TASKS, initialPersonalTasks);
+  callback(allTasks.filter((t) => t.userId === userId));
+  const listener: Listener<PersonalTask[]> = (tasks) => {
+    callback(tasks.filter((t) => t.userId === userId));
+  };
+  personalTaskListeners.add(listener);
+  return () => personalTaskListeners.delete(listener);
 }
 
 export function subscribeToRequests(callback: (reqs: ParticipationRequest[]) => void): () => void {
@@ -881,6 +1010,139 @@ export async function deletePerson(personId: string): Promise<void> {
   const filtered = current.filter((p) => p.id !== personId);
   save(STORAGE_KEYS.PEOPLE, filtered);
   peopleListeners.forEach((fn) => fn(filtered));
+}
+
+// Operaciones de Mutación (Grupos de Personas) en la Nube y Local
+export async function saveGroup(
+  group: Omit<PeopleGroup, 'id' | 'createdAt'> & { id?: string; createdAt?: string }
+): Promise<string> {
+  const now = new Date().toISOString();
+  let id = group.id;
+
+  if (isFirebaseConfigured && db) {
+    try {
+      if (!id) {
+        id = `grp-${Date.now()}`;
+      }
+      const groupData: PeopleGroup = {
+        ...group,
+        id,
+        createdAt: group.createdAt || now,
+      };
+      await setDoc(doc(db, 'groups', id), groupData, { merge: true });
+      return id;
+    } catch (err) {
+      console.error('Error guardando grupo en Firestore:', err);
+    }
+  }
+
+  const current = load<PeopleGroup[]>(STORAGE_KEYS.GROUPS, initialGroups);
+  if (id) {
+    const idx = current.findIndex((g) => g.id === id);
+    if (idx >= 0) current[idx] = { ...current[idx], ...group, id };
+    else current.push({ ...group, id, createdAt: now });
+  } else {
+    id = `grp-${Date.now()}`;
+    current.push({ ...group, id, createdAt: now });
+  }
+
+  save(STORAGE_KEYS.GROUPS, current);
+  groupListeners.forEach((fn) => fn(current));
+  return id;
+}
+
+export async function deleteGroup(groupId: string): Promise<void> {
+  if (isFirebaseConfigured && db) {
+    try {
+      await deleteDoc(doc(db, 'groups', groupId));
+    } catch (err) {
+      console.error('Error eliminando grupo en Firestore:', err);
+    }
+  }
+  const current = load<PeopleGroup[]>(STORAGE_KEYS.GROUPS, initialGroups);
+  const filtered = current.filter((g) => g.id !== groupId);
+  save(STORAGE_KEYS.GROUPS, filtered);
+  groupListeners.forEach((fn) => fn(filtered));
+}
+
+// Operaciones de Mutación (Mis Pendientes y Recordatorios Personales)
+export async function savePersonalTask(
+  task: Omit<PersonalTask, 'id' | 'createdAt'> & { id?: string; createdAt?: string }
+): Promise<string> {
+  const now = new Date().toISOString();
+  let id = task.id;
+
+  if (isFirebaseConfigured && db) {
+    try {
+      if (!id) {
+        id = `task-${Date.now()}`;
+      }
+      const taskData: PersonalTask = {
+        ...task,
+        id,
+        createdAt: task.createdAt || now,
+      };
+      await setDoc(doc(db, 'personal_tasks', id), taskData, { merge: true });
+      return id;
+    } catch (err) {
+      console.error('Error guardando tarea personal en Firestore:', err);
+    }
+  }
+
+  const current = load<PersonalTask[]>(STORAGE_KEYS.PERSONAL_TASKS, initialPersonalTasks);
+  if (id) {
+    const idx = current.findIndex((t) => t.id === id);
+    if (idx >= 0) current[idx] = { ...current[idx], ...task, id, createdAt: current[idx].createdAt || now };
+    else current.push({ ...task, id, createdAt: now });
+  } else {
+    id = `task-${Date.now()}`;
+    current.push({ ...task, id, createdAt: now });
+  }
+
+  save(STORAGE_KEYS.PERSONAL_TASKS, current);
+  personalTaskListeners.forEach((fn) => fn(current));
+  return id;
+}
+
+export async function togglePersonalTask(taskId: string): Promise<void> {
+  const now = new Date().toISOString();
+  if (isFirebaseConfigured && db) {
+    try {
+      const taskRef = doc(db, 'personal_tasks', taskId);
+      const currentTasks = load<PersonalTask[]>(STORAGE_KEYS.PERSONAL_TASKS, initialPersonalTasks);
+      const localItem = currentTasks.find((t) => t.id === taskId);
+      const nextStatus = localItem?.status === 'completada' ? 'pendiente' : 'completada';
+      await updateDoc(taskRef, {
+        status: nextStatus,
+        completedAt: nextStatus === 'completada' ? now : null,
+      }).catch(() => {});
+    } catch (err) {
+      console.error('Error alternando tarea en Firestore:', err);
+    }
+  }
+
+  const current = load<PersonalTask[]>(STORAGE_KEYS.PERSONAL_TASKS, initialPersonalTasks);
+  const target = current.find((t) => t.id === taskId);
+  if (target) {
+    target.status = target.status === 'completada' ? 'pendiente' : 'completada';
+    target.completedAt = target.status === 'completada' ? now : undefined;
+    save(STORAGE_KEYS.PERSONAL_TASKS, current);
+    personalTaskListeners.forEach((fn) => fn(current));
+  }
+}
+
+export async function deletePersonalTask(taskId: string): Promise<void> {
+  if (isFirebaseConfigured && db) {
+    try {
+      await deleteDoc(doc(db, 'personal_tasks', taskId));
+    } catch (err) {
+      console.error('Error eliminando tarea en Firestore:', err);
+    }
+  }
+  const current = load<PersonalTask[]>(STORAGE_KEYS.PERSONAL_TASKS, initialPersonalTasks);
+  const filtered = current.filter((t) => t.id !== taskId);
+  save(STORAGE_KEYS.PERSONAL_TASKS, filtered);
+  personalTaskListeners.forEach((fn) => fn(filtered));
 }
 
 // Operaciones de Solicitud de Participación y Confirmación por Token

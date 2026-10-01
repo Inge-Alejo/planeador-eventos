@@ -13,7 +13,7 @@ import {
   Columns,
   CalendarDays,
 } from 'lucide-react';
-import { EventEntity, Space, Person, EventType, EventStatus } from '../../types';
+import { EventEntity, Space, Person, EventType, EventStatus, PeopleGroup } from '../../types';
 import {
   formatFriendlyDate,
   formatShortDate,
@@ -28,6 +28,7 @@ interface CalendarViewProps {
   events: EventEntity[];
   spaces: Space[];
   people: Person[];
+  groups?: PeopleGroup[];
   onSelectEvent: (eventId: string) => void;
   onOpenCreateEvent: (preset?: { date?: string; time?: string; spaceId?: string }) => void;
 }
@@ -36,6 +37,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
   events,
   spaces,
   people,
+  groups = [],
   onSelectEvent,
   onOpenCreateEvent,
 }) => {
@@ -46,6 +48,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
   const [filterSpaceId, setFilterSpaceId] = useState<string>('todos');
   const [filterType, setFilterType] = useState<string>('todos');
   const [filterStatus, setFilterStatus] = useState<string>('todos');
+  const [filterGroupId, setFilterGroupId] = useState<string>('todos');
 
   // Descomponer año, mes y día de currentDate
   const [currentYear, currentMonth, currentDay] = useMemo(() => {
@@ -59,9 +62,18 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
       if (filterSpaceId !== 'todos' && e.spaceId !== filterSpaceId) return false;
       if (filterType !== 'todos' && e.type !== filterType) return false;
       if (filterStatus !== 'todos' && e.status !== filterStatus) return false;
+      if (filterGroupId !== 'todos') {
+        const group = groups.find((g) => g.id === filterGroupId);
+        if (group) {
+          const hasMember =
+            group.memberIds.some((mId) => (e.peopleIds || []).includes(mId)) ||
+            group.memberIds.includes(e.responsibleId);
+          if (!hasMember) return false;
+        }
+      }
       return true;
     });
-  }, [events, filterSpaceId, filterType, filterStatus]);
+  }, [events, filterSpaceId, filterType, filterStatus, filterGroupId, groups]);
 
   // Navegación
   const goToToday = () => setCurrentDate(getBogotaToday());
@@ -214,6 +226,22 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
             <option value="reunion">Reunión</option>
             <option value="institucional">Institucional</option>
           </select>
+
+          {/* Selector de Grupo de Personas */}
+          {groups.length > 0 && (
+            <select
+              value={filterGroupId}
+              onChange={(e) => setFilterGroupId(e.target.value)}
+              className="rounded-xl border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+            >
+              <option value="todos">Todos los grupos</option>
+              {groups.map((g) => (
+                <option key={g.id} value={g.id}>
+                  Grupo: {g.name} ({g.memberIds.length})
+                </option>
+              ))}
+            </select>
+          )}
 
           {/* Selector de Modos de Vista */}
           <div className="flex items-center gap-0.5 rounded-xl border border-slate-200 p-1 bg-slate-50">

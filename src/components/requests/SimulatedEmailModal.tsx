@@ -17,7 +17,11 @@ import {
 } from 'lucide-react';
 import { ParticipationRequest } from '../../types';
 import { formatFriendlyDate, format12Hour } from '../../lib/timezone';
-import { sendParticipationEmail } from '../../services/emailService';
+import {
+  sendParticipationEmail,
+  generateGoogleCalendarUrl,
+  generateOutlookCalendarUrl,
+} from '../../services/emailService';
 import { useAuth } from '../../context/AuthContext';
 import confetti from 'canvas-confetti';
 
@@ -223,11 +227,45 @@ Planeador de Eventos Académicos`;
             <button
               onClick={handleDownloadICS}
               className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold text-[11px] transition-all cursor-pointer"
-              title="Descargar archivo de calendario (.ics) para Outlook o Google Calendar"
+              title="Descargar archivo de calendario (.ics)"
             >
               <Download className="w-3 h-3 text-slate-500" />
               <span>.ICS</span>
             </button>
+
+            <a
+              href={generateGoogleCalendarUrl({
+                title: request.eventTitle,
+                location: request.spaceName,
+                date: request.eventDate,
+                startTime: request.eventStartTime,
+                endTime: request.eventEndTime,
+              })}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-white border border-slate-200 hover:bg-indigo-50 hover:text-indigo-700 text-slate-700 font-semibold text-[11px] transition-all cursor-pointer"
+              title="Agregar directamente a tu Google Calendar"
+            >
+              <Calendar className="w-3 h-3 text-indigo-600" />
+              <span>Google Cal</span>
+            </a>
+
+            <a
+              href={generateOutlookCalendarUrl({
+                title: request.eventTitle,
+                location: request.spaceName,
+                date: request.eventDate,
+                startTime: request.eventStartTime,
+                endTime: request.eventEndTime,
+              })}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-white border border-slate-200 hover:bg-sky-50 hover:text-sky-700 text-slate-700 font-semibold text-[11px] transition-all cursor-pointer"
+              title="Agregar directamente a tu Outlook Calendar"
+            >
+              <Calendar className="w-3 h-3 text-sky-600" />
+              <span>Outlook Cal</span>
+            </a>
           </div>
         </div>
 

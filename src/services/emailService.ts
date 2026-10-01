@@ -36,6 +36,43 @@ export async function sendEmail({ toEmail, toName, subject, htmlContent }: SendE
   }
 }
 
+// Generadores de Enlaces Directos de Calendario (Google Calendar y Outlook Web)
+export function generateGoogleCalendarUrl(params: {
+  title: string;
+  description?: string;
+  location?: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+}): string {
+  const startClean = `${params.date.replace(/-/g, '')}T${params.startTime.replace(':', '')}00`;
+  const endClean = `${params.date.replace(/-/g, '')}T${params.endTime.replace(':', '')}00`;
+  const text = encodeURIComponent(params.title);
+  const details = encodeURIComponent(
+    `${params.description || 'Actividad institucional programada.'}\n\nFacultad de Medicina • Universidad de Antioquia`
+  );
+  const location = encodeURIComponent(params.location || 'Facultad de Medicina UdeA, Medellín');
+  return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${text}&dates=${startClean}/${endClean}&details=${details}&location=${location}&ctz=America/Bogota`;
+}
+
+export function generateOutlookCalendarUrl(params: {
+  title: string;
+  description?: string;
+  location?: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+}): string {
+  const startClean = `${params.date}T${params.startTime}:00`;
+  const endClean = `${params.date}T${params.endTime}:00`;
+  const subject = encodeURIComponent(params.title);
+  const body = encodeURIComponent(
+    `${params.description || 'Actividad institucional programada.'}\n\nFacultad de Medicina • Universidad de Antioquia`
+  );
+  const location = encodeURIComponent(params.location || 'Facultad de Medicina UdeA, Medellín');
+  return `https://outlook.live.com/calendar/0/deeplink/compose?path=/calendar/action/compose&rru=addevent&subject=${subject}&startdt=${startClean}&enddt=${endClean}&body=${body}&location=${location}`;
+}
+
 // Plantilla HTML Institucional UdeA
 export function generateInvitationHtml(params: {
   personName: string;
@@ -51,6 +88,24 @@ export function generateInvitationHtml(params: {
   const origin = params.baseUrl || (typeof window !== 'undefined' ? window.location.origin : 'https://planeador-eventos.vercel.app');
   const confirmUrl = `${origin}?token=${params.token}&action=confirmada`;
   const rejectUrl = `${origin}?token=${params.token}&action=rechazada`;
+
+  const googleCalUrl = generateGoogleCalendarUrl({
+    title: params.eventTitle,
+    description: params.description,
+    location: params.spaceName,
+    date: params.eventDate,
+    startTime: params.eventStartTime,
+    endTime: params.eventEndTime,
+  });
+
+  const outlookCalUrl = generateOutlookCalendarUrl({
+    title: params.eventTitle,
+    description: params.description,
+    location: params.spaceName,
+    date: params.eventDate,
+    startTime: params.eventStartTime,
+    endTime: params.eventEndTime,
+  });
 
   return `
 <!DOCTYPE html>
@@ -153,7 +208,28 @@ export function generateInvitationHtml(params: {
                 </tr>
               </table>
 
-              <p style="font-size: 11px; color: #94a3b8; text-align: center; margin-top: 25px;">
+              <!-- Botones de 1 Clic para Agregar a Calendario Personal (Google Calendar & Outlook) -->
+              <div style="margin-top: 25px; padding-top: 20px; border-top: 1px dashed #cbd5e1; text-align: center;">
+                <p style="font-size: 11px; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: 0.5px; margin: 0 0 10px 0;">
+                  📅 Agendar en mi calendario personal:
+                </p>
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
+                  <tr>
+                    <td align="center" style="padding-right: 6px;" width="50%">
+                      <a href="${googleCalUrl}" target="_blank" style="display: block; background-color: #ffffff; color: #1e293b; text-decoration: none; padding: 10px 14px; border-radius: 10px; font-size: 12px; font-weight: 600; text-align: center; border: 1px solid #cbd5e1; box-shadow: 0 1px 3px rgba(0,0,0,0.04);">
+                        📅 Google Calendar
+                      </a>
+                    </td>
+                    <td align="center" style="padding-left: 6px;" width="50%">
+                      <a href="${outlookCalUrl}" target="_blank" style="display: block; background-color: #ffffff; color: #1e293b; text-decoration: none; padding: 10px 14px; border-radius: 10px; font-size: 12px; font-weight: 600; text-align: center; border: 1px solid #cbd5e1; box-shadow: 0 1px 3px rgba(0,0,0,0.04);">
+                        📅 Outlook Calendar
+                      </a>
+                    </td>
+                  </tr>
+                </table>
+              </div>
+
+              <p style="font-size: 11px; color: #94a3b8; text-align: center; margin-top: 20px;">
                 No es necesario iniciar sesión. Su respuesta se sincronizará automáticamente en tiempo real con el calendario de la Facultad.
               </p>
             </td>

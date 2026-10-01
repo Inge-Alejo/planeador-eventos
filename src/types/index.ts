@@ -44,6 +44,39 @@ export interface Person {
   createdAt: string;
 }
 
+export interface PeopleGroup {
+  id: string;
+  name: string;
+  description?: string;
+  color: string;
+  memberIds: string[]; // IDs de Person pertenecientes al grupo
+  createdBy?: {
+    uid: string;
+    name: string;
+    email: string;
+  };
+  createdAt: string;
+}
+
+export type PersonalTaskPriority = 'alta' | 'media' | 'baja';
+export type PersonalTaskStatus = 'pendiente' | 'completada';
+
+export interface PersonalTask {
+  id: string;
+  userId: string; // UID del usuario dueño de la tarea
+  title: string;
+  description?: string;
+  dueDate: string; // YYYY-MM-DD
+  dueTime?: string; // HH:mm
+  priority: PersonalTaskPriority;
+  status: PersonalTaskStatus;
+  category?: 'evento' | 'recordatorio' | 'tarea' | 'seguimiento';
+  eventId?: string;
+  eventTitle?: string;
+  completedAt?: string;
+  createdAt: string;
+}
+
 export type EventType = 
   | 'academico' 
   | 'grabacion' 
@@ -141,13 +174,18 @@ export type AuditAction =
   | 'SOLICITUD_CONFIRMADA' 
   | 'SOLICITUD_RECHAZADA'
   | 'ESPACIO_CREADO'
-  | 'PERSONA_CREADA';
+  | 'PERSONA_CREADA'
+  | 'GRUPO_CREADO'
+  | 'GRUPO_MODIFICADO'
+  | 'GRUPO_ELIMINADO'
+  | 'TAREA_CREADA'
+  | 'TAREA_COMPLETADA';
 
 export interface AuditLog {
   id: string;
   action: AuditAction;
   entityId: string;
-  entityType: 'evento' | 'espacio' | 'persona' | 'solicitud';
+  entityType: 'evento' | 'espacio' | 'persona' | 'solicitud' | 'grupo' | 'tarea';
   details: Record<string, any>;
   user: {
     uid: string;

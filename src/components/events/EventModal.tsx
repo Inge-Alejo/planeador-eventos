@@ -12,7 +12,7 @@ import {
   FileText,
   UserCheck,
 } from 'lucide-react';
-import { EventEntity, Space, Person, EventType, EventStatus } from '../../types';
+import { EventEntity, Space, Person, EventType, EventStatus, PeopleGroup } from '../../types';
 import { detectConflicts } from '../../services/conflictEngine';
 import { calculateDuration, format12Hour, getBogotaToday } from '../../lib/timezone';
 
@@ -23,6 +23,7 @@ interface EventModalProps {
   eventToEdit?: EventEntity | null;
   spaces: Space[];
   people: Person[];
+  groups?: PeopleGroup[];
   existingEvents: EventEntity[];
   initialPreset?: { date?: string; time?: string; spaceId?: string };
 }
@@ -34,6 +35,7 @@ export const EventModal: React.FC<EventModalProps> = ({
   eventToEdit,
   spaces,
   people,
+  groups = [],
   existingEvents,
   initialPreset,
 }) => {
@@ -51,6 +53,20 @@ export const EventModal: React.FC<EventModalProps> = ({
   const [notes, setNotes] = useState('');
   const [sendParticipationEmails, setSendParticipationEmails] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleToggleGroup = (group: PeopleGroup) => {
+    const isFullySelected =
+      group.memberIds.length > 0 &&
+      group.memberIds.every((id) => selectedPeopleIds.includes(id));
+
+    if (isFullySelected) {
+      // Remover a los miembros de este grupo
+      setSelectedPeopleIds((prev) => prev.filter((id) => !group.memberIds.includes(id)));
+    } else {
+      // Agregar a todos los miembros de este grupo sin duplicar
+      setSelectedPeopleIds((prev) => Array.from(new Set([...prev, ...group.memberIds])));
+    }
+  };
 
   // Cargar datos al abrir modal
   useEffect(() => {
@@ -393,6 +409,49 @@ export const EventModal: React.FC<EventModalProps> = ({
                 Se validará simultaneidad en tiempo real
               </span>
             </div>
+            {/* Convocatoria por Grupos */}
+            {groups.length > 0 && (
+              <div className="mb-2.5 p-2 rounded-xl bg-slate-100/70 border border-slate-200/80">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block mb-1.5">
+                  Convocatoria Rápida por Grupos:
+                </span>
+                <div className="flex flex-wrap gap-1.5">
+                  {groups.map((g) => {
+                    const isFullySelected =
+                      g.memberIds.length > 0 &&
+                      g.memberIds.every((id) => selectedPeopleIds.includes(id));
+                    return (
+                      <button
+                        key={g.id}
+                        type="button"
+                        onClick={() => handleToggleGroup(g)}
+                        className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold border transition-all ${
+                          isFullySelected
+                            ? 'bg-emerald-50 border-emerald-300 text-emerald-800 shadow-xs'
+                            : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                        }`}
+                        title={
+                          isFullySelected
+                            ? 'Desmarcar integrantes de este grupo'
+                            : 'Convocar a todos los integrantes de este grupo'
+                        }
+                      >
+                        <span
+                          className="w-2 h-2 rounded-full shrink-0"
+                          style={{ backgroundColor: g.color || '#059669' }}
+                        />
+                        <span>{g.name}</span>
+                        <span className="text-[10px] text-slate-400">({g.memberIds.length})</span>
+                        {isFullySelected && (
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 ml-0.5 shrink-0" />
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-40 overflow-y-auto p-2 rounded-2xl border border-slate-200 bg-slate-50/50">
               {people.map((p) => {
                 const isSelected = selectedPeopleIds.includes(p.id);

@@ -18,9 +18,12 @@ import { PersonModal } from './components/people/PersonModal';
 import { SimulatedEmailModal } from './components/requests/SimulatedEmailModal';
 import { UserManagementView } from './components/users/UserManagementView';
 import { NotificationsView } from './components/notifications/NotificationsView';
+import { GroupModal } from './components/groups/GroupModal';
+import { PersonalTasksView } from './components/personal/PersonalTasksView';
+import { SystemMonitorView } from './components/admin/SystemMonitorView';
 import { AuthModal } from './components/auth/AuthModal';
 import { LoginScreen } from './components/auth/LoginScreen';
-import { EventEntity, Space, Person, ParticipationRequest } from './types';
+import { EventEntity, Space, Person, ParticipationRequest, PeopleGroup } from './types';
 import { CheckCircle2, XCircle, X } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
@@ -30,6 +33,8 @@ const MainApp: React.FC = () => {
     events,
     spaces,
     people,
+    groups,
+    personalTasks,
     requests,
     notifications,
     auditLogs,
@@ -43,12 +48,17 @@ const MainApp: React.FC = () => {
     deleteSpace,
     savePerson,
     deletePerson,
+    saveGroup,
+    deleteGroup,
+    savePersonalTask,
+    togglePersonalTask,
+    deletePersonalTask,
     createParticipationRequest,
     respondToParticipationRequest,
     markNotificationAsRead,
     markAllNotificationsAsRead,
     updateUserRoleAndStatus,
-  } = useEventFlow();
+  } = useEventFlow(user?.uid);
 
   const [activeTab, setActiveTab] = useState<ActiveTab>('dashboard');
   const [activeTabFilter, setActiveTabFilter] = useState<any>(undefined);
@@ -66,6 +76,9 @@ const MainApp: React.FC = () => {
 
   const [isPersonModalOpen, setIsPersonModalOpen] = useState(false);
   const [personToEdit, setPersonToEdit] = useState<Person | null>(null);
+
+  const [isGroupModalOpen, setIsGroupModalOpen] = useState(false);
+  const [groupToEdit, setGroupToEdit] = useState<PeopleGroup | null>(null);
 
   const [simulatedEmailRequest, setSimulatedEmailRequest] = useState<ParticipationRequest | null>(null);
 
@@ -288,11 +301,33 @@ const MainApp: React.FC = () => {
             />
           )}
 
+          {activeTab === 'mis_pendientes' && (
+            <PersonalTasksView
+              user={user}
+              events={events}
+              spaces={spaces}
+              people={people}
+              requests={requests}
+              personalTasks={personalTasks}
+              onToggleTask={togglePersonalTask}
+              onDeleteTask={deletePersonalTask}
+              onSaveTask={savePersonalTask}
+              onRespondRequest={async (reqId, resp) => {
+                const req = requests.find((r) => r.id === reqId);
+                if (req) {
+                  await respondToParticipationRequest(req.token, resp);
+                }
+              }}
+              onSelectEvent={(evtId) => setSelectedEventId(evtId)}
+            />
+          )}
+
           {activeTab === 'calendario' && (
             <CalendarView
               events={events}
               spaces={spaces}
               people={people}
+              groups={groups}
               onSelectEvent={(evtId) => setSelectedEventId(evtId)}
               onOpenCreateEvent={handleOpenCreateEvent}
             />
@@ -332,6 +367,7 @@ const MainApp: React.FC = () => {
           {activeTab === 'personas' && (
             <PeopleList
               people={people}
+              groups={groups}
               events={events}
               onOpenCreatePerson={() => {
                 setPersonToEdit(null);
@@ -342,6 +378,15 @@ const MainApp: React.FC = () => {
                 setIsPersonModalOpen(true);
               }}
               onDeletePerson={deletePerson}
+              onOpenCreateGroup={() => {
+                setGroupToEdit(null);
+                setIsGroupModalOpen(true);
+              }}
+              onEditGroup={(g) => {
+                setGroupToEdit(g);
+                setIsGroupModalOpen(true);
+              }}
+              onDeleteGroup={deleteGroup}
               onSelectEvent={(evtId) => setSelectedEventId(evtId)}
             />
           )}
@@ -381,6 +426,20 @@ const MainApp: React.FC = () => {
               currentUserUid={user?.uid}
             />
           )}
+
+          {activeTab === 'monitoreo' && isAdmin && (
+            <SystemMonitorView
+              events={events}
+              spaces={spaces}
+              people={people}
+              groups={groups}
+              requests={requests}
+              notifications={notifications}
+              auditLogs={auditLogs}
+              users={users}
+              personalTasks={personalTasks}
+            />
+          )}
         </main>
       </div>
 
@@ -392,6 +451,7 @@ const MainApp: React.FC = () => {
         eventToEdit={eventToEdit}
         spaces={spaces}
         people={people}
+        groups={groups}
         existingEvents={events}
         initialPreset={eventPreset}
       />
@@ -430,6 +490,18 @@ const MainApp: React.FC = () => {
           await savePerson(p);
         }}
         personToEdit={personToEdit}
+      />
+
+      {/* Modal Crear / Editar Grupo de Personas */}
+      <GroupModal
+        isOpen={isGroupModalOpen}
+        onClose={() => setIsGroupModalOpen(false)}
+        onSave={async (g) => {
+          await saveGroup(g);
+        }}
+        groupToEdit={groupToEdit}
+        people={people}
+        isAdmin={isAdmin}
       />
 
       {/* Modal de Correo Simulado y Enlace de Confirmación */}
