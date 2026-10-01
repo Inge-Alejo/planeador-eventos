@@ -12,6 +12,7 @@ import {
 } from '../types';
 import { getBogotaToday } from '../lib/timezone';
 import { db, isFirebaseConfigured, auth } from '../lib/firebase';
+import { sendParticipationEmail } from './emailService';
 import {
   collection,
   onSnapshot,
@@ -929,6 +930,11 @@ export async function createParticipationRequest(
     title: 'Solicitud de Participación Enviada',
     message: `Se ha invitado a ${req.personName} para el evento "${req.eventTitle}".`,
     eventId: req.eventId,
+  });
+
+  // Enviar correo automático mediante Brevo en segundo plano
+  sendParticipationEmail(newReq).catch((err) => {
+    console.warn('Envío de correo automático Brevo en segundo plano:', err);
   });
 
   return newReq;

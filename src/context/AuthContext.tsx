@@ -64,6 +64,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const [isGuest, setIsGuest] = useState<boolean>(() => {
     if (typeof window === 'undefined') return false;
+    if (window.location.search.includes('token=')) return true;
     return localStorage.getItem(GUEST_STORAGE_KEY) === 'true';
   });
 

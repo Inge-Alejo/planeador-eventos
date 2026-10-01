@@ -20,10 +20,11 @@ import { UserManagementView } from './components/users/UserManagementView';
 import { AuthModal } from './components/auth/AuthModal';
 import { LoginScreen } from './components/auth/LoginScreen';
 import { EventEntity, Space, Person, ParticipationRequest } from './types';
+import { CheckCircle2, XCircle, X } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
 const MainApp: React.FC = () => {
-  const { user, isGuest, canEdit, isAdmin } = useAuth();
+  const { user, isGuest, enterAsGuest, canEdit, isAdmin } = useAuth();
   const {
     events,
     spaces,
@@ -64,6 +65,41 @@ const MainApp: React.FC = () => {
   const [personToEdit, setPersonToEdit] = useState<Person | null>(null);
 
   const [simulatedEmailRequest, setSimulatedEmailRequest] = useState<ParticipationRequest | null>(null);
+
+  // Banner de Confirmación directa por enlace de correo
+  const [tokenBanner, setTokenBanner] = useState<{
+    status: 'confirmada' | 'rechazada';
+    personName: string;
+    eventTitle: string;
+  } | null>(null);
+
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const urlParams = new URLSearchParams(window.location.search);
+    const token = urlParams.get('token');
+    const action = urlParams.get('action') as 'confirmada' | 'rechazada' | null;
+
+    if (token && (action === 'confirmada' || action === 'rechazada')) {
+      enterAsGuest();
+      respondToParticipationRequest(token, action).then((req) => {
+        if (req) {
+          setTokenBanner({
+            status: action,
+            personName: req.personName,
+            eventTitle: req.eventTitle,
+          });
+          if (action === 'confirmada') {
+            confetti({
+              particleCount: 100,
+              spread: 70,
+              origin: { y: 0.6 },
+            });
+          }
+        }
+        window.history.replaceState({}, document.title, window.location.pathname);
+      });
+    }
+  }, [respondToParticipationRequest, enterAsGuest]);
 
   // Evento actualmente seleccionado para el drawer
   const selectedEvent = useMemo(() => {
@@ -175,6 +211,43 @@ const MainApp: React.FC = () => {
           onToggleMobileSidebar={() => setIsMobileSidebarOpen(!isMobileSidebarOpen)}
           onSelectEventFromNotification={(evtId) => setSelectedEventId(evtId)}
         />
+
+        {/* Banner de Confirmación Directa desde Correo */}
+        {tokenBanner && (
+          <div className="mx-4 mt-4 sm:mx-6 lg:mx-8 p-4 rounded-2xl shadow-lg border flex items-start justify-between gap-3 animate-in fade-in slide-in-from-top-2 duration-300 bg-white">
+            <div className="flex items-start gap-3">
+              <div
+                className={`p-2 rounded-xl text-white shrink-0 ${
+                  tokenBanner.status === 'confirmada' ? 'bg-emerald-600' : 'bg-rose-600'
+                }`}
+              >
+                {tokenBanner.status === 'confirmada' ? (
+                  <CheckCircle2 className="w-5 h-5" />
+                ) : (
+                  <XCircle className="w-5 h-5" />
+                )}
+              </div>
+              <div>
+                <h4 className="text-sm font-bold text-slate-800">
+                  {tokenBanner.status === 'confirmada'
+                    ? '¡Tu asistencia ha sido confirmada con éxito!'
+                    : 'Has declinado la invitación al evento'}
+                </h4>
+                <p className="text-xs text-slate-600 mt-0.5">
+                  Estimado(a) <strong>{tokenBanner.personName}</strong>, tu respuesta para el evento{' '}
+                  <span className="font-semibold text-indigo-600">"{tokenBanner.eventTitle}"</span> se ha
+                  sincronizado en tiempo real con el calendario de la Facultad de Medicina.
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => setTokenBanner(null)}
+              className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
 
         {/* Área de Trabajo con Scroll */}
         <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
