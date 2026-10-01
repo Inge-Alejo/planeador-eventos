@@ -231,18 +231,12 @@ export const AuthModal: React.FC = () => {
               <input
                 type="email"
                 required
-                placeholder="proyectostic.med@udea.edu.co"
+                placeholder="usuario@udea.edu.co"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="w-full rounded-xl border border-slate-200 bg-slate-50 pl-10 pr-3 py-2 text-xs text-slate-800 focus:bg-white focus:border-indigo-500 focus:outline-none"
               />
             </div>
-            {email.trim().toLowerCase() === 'proyectostic.med@udea.edu.co' && (
-              <p className="mt-1 text-[11px] font-semibold text-emerald-600 flex items-center gap-1">
-                <ShieldCheck className="w-3.5 h-3.5" />
-                Cuenta designada como Super Administrador
-              </p>
-            )}
           </div>
 
           {/* Campo Contraseña */}

@@ -180,22 +180,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
             );
           })}
         </nav>
-
-        {/* Footer del Sidebar con indicador de zona horaria y estado */}
-        <div className="border-t border-slate-100 p-4">
-          <div className="rounded-xl bg-slate-50 p-3 border border-slate-200/60">
-            <div className="flex items-center justify-between text-[11px] text-slate-500">
-              <span className="font-semibold text-slate-700">Zona Horaria:</span>
-              <span className="font-mono bg-white px-1.5 py-0.5 rounded border border-slate-200 text-slate-800">
-                America/Bogota
-              </span>
-            </div>
-            <div className="mt-2 flex items-center gap-2 text-[11px] text-emerald-600 font-medium">
-              <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></span>
-              Sincronización en vivo activa
-            </div>
-          </div>
-        </div>
       </aside>
     </>
   );

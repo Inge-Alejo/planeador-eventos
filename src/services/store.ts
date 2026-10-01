@@ -11,14 +11,18 @@ import {
   UserAccountStatus,
 } from '../types';
 import { getBogotaToday } from '../lib/timezone';
-import { db, isFirebaseConfigured } from '../lib/firebase';
+import { db, isFirebaseConfigured, auth } from '../lib/firebase';
 import {
   collection,
   onSnapshot,
   addDoc,
   updateDoc,
+  setDoc,
   deleteDoc,
   doc,
+  query,
+  where,
+  getDocs,
   serverTimestamp,
 } from 'firebase/firestore';
 
@@ -380,13 +384,56 @@ if (channel) {
   };
 }
 
-// Subscripciones públicas (Compatible con API onSnapshot de Firestore)
+// Helper para normalizar eventos desde Firestore (evitar Timestamp vs ISO string issues)
+function normalizeEvent(id: string, data: any): EventEntity {
+  let createdAt = data.createdAt;
+  if (createdAt && typeof createdAt.toDate === 'function') {
+    createdAt = createdAt.toDate().toISOString();
+  } else if (!createdAt) {
+    createdAt = new Date().toISOString();
+  }
+  let updatedAt = data.updatedAt;
+  if (updatedAt && typeof updatedAt.toDate === 'function') {
+    updatedAt = updatedAt.toDate().toISOString();
+  }
+  return {
+    ...data,
+    id,
+    createdAt,
+    updatedAt,
+  };
+}
+
+// Subscripciones públicas con Sincronización en Tiempo Real Multi-Navegador
 export function subscribeToEvents(callback: (events: EventEntity[]) => void): () => void {
   if (isFirebaseConfigured && db) {
-    const unsub = onSnapshot(collection(db, 'events'), (snapshot) => {
-      const data = snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as EventEntity));
-      callback(data);
-    });
+    const firestore = db;
+    let hasSeeded = false;
+    const unsub = onSnapshot(
+      collection(firestore, 'events'),
+      async (snapshot) => {
+        if (snapshot.empty && !hasSeeded) {
+          hasSeeded = true;
+          if (auth?.currentUser) {
+            for (const ev of initialEvents) {
+              try {
+                await setDoc(doc(firestore, 'events', ev.id), ev, { merge: true });
+              } catch (e) {
+                console.warn('Error sembrando evento en Firestore:', e);
+              }
+            }
+          }
+          callback(initialEvents);
+          return;
+        }
+        const data = snapshot.docs.map((d) => normalizeEvent(d.id, d.data()));
+        callback(data);
+      },
+      (error) => {
+        console.warn('Firestore events subscription error, fallback local:', error);
+        callback(load(STORAGE_KEYS.EVENTS, initialEvents));
+      }
+    );
     return unsub;
   }
   callback(load(STORAGE_KEYS.EVENTS, initialEvents));
@@ -396,10 +443,33 @@ export function subscribeToEvents(callback: (events: EventEntity[]) => void): ()
 
 export function subscribeToSpaces(callback: (spaces: Space[]) => void): () => void {
   if (isFirebaseConfigured && db) {
-    const unsub = onSnapshot(collection(db, 'spaces'), (snapshot) => {
-      const data = snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as Space));
-      callback(data);
-    });
+    const firestore = db;
+    let hasSeeded = false;
+    const unsub = onSnapshot(
+      collection(firestore, 'spaces'),
+      async (snapshot) => {
+        if (snapshot.empty && !hasSeeded) {
+          hasSeeded = true;
+          if (auth?.currentUser) {
+            for (const sp of initialSpaces) {
+              try {
+                await setDoc(doc(firestore, 'spaces', sp.id), sp, { merge: true });
+              } catch (e) {
+                console.warn('Error sembrando espacio en Firestore:', e);
+              }
+            }
+          }
+          callback(initialSpaces);
+          return;
+        }
+        const data = snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as Space));
+        callback(data);
+      },
+      (error) => {
+        console.warn('Firestore spaces subscription error, fallback local:', error);
+        callback(load(STORAGE_KEYS.SPACES, initialSpaces));
+      }
+    );
     return unsub;
   }
   callback(load(STORAGE_KEYS.SPACES, initialSpaces));
@@ -409,10 +479,33 @@ export function subscribeToSpaces(callback: (spaces: Space[]) => void): () => vo
 
 export function subscribeToPeople(callback: (people: Person[]) => void): () => void {
   if (isFirebaseConfigured && db) {
-    const unsub = onSnapshot(collection(db, 'people'), (snapshot) => {
-      const data = snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as Person));
-      callback(data);
-    });
+    const firestore = db;
+    let hasSeeded = false;
+    const unsub = onSnapshot(
+      collection(firestore, 'people'),
+      async (snapshot) => {
+        if (snapshot.empty && !hasSeeded) {
+          hasSeeded = true;
+          if (auth?.currentUser) {
+            for (const p of initialPeople) {
+              try {
+                await setDoc(doc(firestore, 'people', p.id), p, { merge: true });
+              } catch (e) {
+                console.warn('Error sembrando persona en Firestore:', e);
+              }
+            }
+          }
+          callback(initialPeople);
+          return;
+        }
+        const data = snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as Person));
+        callback(data);
+      },
+      (error) => {
+        console.warn('Firestore people subscription error, fallback local:', error);
+        callback(load(STORAGE_KEYS.PEOPLE, initialPeople));
+      }
+    );
     return unsub;
   }
   callback(load(STORAGE_KEYS.PEOPLE, initialPeople));
@@ -422,10 +515,17 @@ export function subscribeToPeople(callback: (people: Person[]) => void): () => v
 
 export function subscribeToRequests(callback: (reqs: ParticipationRequest[]) => void): () => void {
   if (isFirebaseConfigured && db) {
-    const unsub = onSnapshot(collection(db, 'participation_requests'), (snapshot) => {
-      const data = snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as ParticipationRequest));
-      callback(data);
-    });
+    const unsub = onSnapshot(
+      collection(db, 'participation_requests'),
+      (snapshot) => {
+        const data = snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as ParticipationRequest));
+        callback(data);
+      },
+      (error) => {
+        console.warn('Firestore requests subscription error, fallback local:', error);
+        callback(load(STORAGE_KEYS.REQUESTS, initialRequests));
+      }
+    );
     return unsub;
   }
   callback(load(STORAGE_KEYS.REQUESTS, initialRequests));
@@ -435,10 +535,17 @@ export function subscribeToRequests(callback: (reqs: ParticipationRequest[]) => 
 
 export function subscribeToNotifications(callback: (notifs: AppNotification[]) => void): () => void {
   if (isFirebaseConfigured && db) {
-    const unsub = onSnapshot(collection(db, 'notifications'), (snapshot) => {
-      const data = snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as AppNotification));
-      callback(data);
-    });
+    const unsub = onSnapshot(
+      collection(db, 'notifications'),
+      (snapshot) => {
+        const data = snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as AppNotification));
+        callback(data);
+      },
+      (error) => {
+        console.warn('Firestore notifs subscription error, fallback local:', error);
+        callback(load(STORAGE_KEYS.NOTIFICATIONS, initialNotifications));
+      }
+    );
     return unsub;
   }
   callback(load(STORAGE_KEYS.NOTIFICATIONS, initialNotifications));
@@ -448,10 +555,17 @@ export function subscribeToNotifications(callback: (notifs: AppNotification[]) =
 
 export function subscribeToAudit(callback: (logs: AuditLog[]) => void): () => void {
   if (isFirebaseConfigured && db) {
-    const unsub = onSnapshot(collection(db, 'audit_logs'), (snapshot) => {
-      const data = snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as AuditLog));
-      callback(data);
-    });
+    const unsub = onSnapshot(
+      collection(db, 'audit_logs'),
+      (snapshot) => {
+        const data = snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as AuditLog));
+        callback(data);
+      },
+      (error) => {
+        console.warn('Firestore audit subscription error, fallback local:', error);
+        callback(load(STORAGE_KEYS.AUDIT, initialAudit));
+      }
+    );
     return unsub;
   }
   callback(load(STORAGE_KEYS.AUDIT, initialAudit));
@@ -461,10 +575,17 @@ export function subscribeToAudit(callback: (logs: AuditLog[]) => void): () => vo
 
 export function subscribeToUsers(callback: (users: UserProfile[]) => void): () => void {
   if (isFirebaseConfigured && db) {
-    const unsub = onSnapshot(collection(db, 'users'), (snapshot) => {
-      const data = snapshot.docs.map((d) => ({ uid: d.id, ...d.data() } as UserProfile));
-      callback(data);
-    });
+    const unsub = onSnapshot(
+      collection(db, 'users'),
+      (snapshot) => {
+        const data = snapshot.docs.map((d) => ({ uid: d.id, ...d.data() } as UserProfile));
+        callback(data);
+      },
+      (error) => {
+        console.warn('Firestore users subscription error, fallback local:', error);
+        callback(load(STORAGE_KEYS.USERS_LIST, initialUsers));
+      }
+    );
     return unsub;
   }
   callback(load(STORAGE_KEYS.USERS_LIST, initialUsers));
@@ -482,7 +603,7 @@ export async function updateUserRoleAndStatus(
     await updateDoc(userRef, {
       role: newRole,
       status: newStatus,
-      updatedAt: serverTimestamp(),
+      updatedAt: new Date().toISOString(),
     });
     return;
   }
@@ -501,40 +622,66 @@ export async function updateUserRoleAndStatus(
   }
 }
 
-// Operaciones de Mutación (Eventos)
+// Operaciones de Mutación (Eventos) en la Nube y Local
 export async function saveEvent(event: Omit<EventEntity, 'id'> & { id?: string }): Promise<string> {
   const user = load<UserProfile>(STORAGE_KEYS.USER, {
-    uid: 'admin-1',
-    displayName: 'Administrador General',
-    email: 'admin@empresa.com',
+    uid: auth?.currentUser?.uid || 'admin-1',
+    displayName: auth?.currentUser?.displayName || 'Usuario UdeA',
+    email: auth?.currentUser?.email || 'usuario@udea.edu.co',
     role: 'administrador',
     status: 'aprobado',
     createdAt: new Date().toISOString(),
     lastLogin: new Date().toISOString(),
   });
 
-  if (isFirebaseConfigured && db) {
-    if (event.id) {
-      const eventRef = doc(db, 'events', event.id);
-      await updateDoc(eventRef, {
-        ...event,
-        updatedAt: serverTimestamp(),
-      });
-      return event.id;
-    } else {
-      const docRef = await addDoc(collection(db, 'events'), {
-        ...event,
-        createdAt: serverTimestamp(),
-      });
-      return docRef.id;
-    }
-  }
-
-  // Local Storage Mutation
-  const current = load<EventEntity[]>(STORAGE_KEYS.EVENTS, initialEvents);
   const now = new Date().toISOString();
   let id = event.id;
 
+  if (isFirebaseConfigured && db) {
+    try {
+      if (id) {
+        const eventRef = doc(db, 'events', id);
+        const dataToSave = {
+          ...event,
+          id,
+          updatedAt: now,
+          updatedBy: { uid: user.uid, name: user.displayName, email: user.email },
+        };
+        await setDoc(eventRef, dataToSave, { merge: true });
+      } else {
+        const newDocRef = doc(collection(db, 'events'));
+        id = newDocRef.id;
+        const newEventData = {
+          ...event,
+          id,
+          createdAt: now,
+          createdBy: { uid: user.uid, name: user.displayName, email: user.email },
+        };
+        await setDoc(newDocRef, newEventData);
+      }
+
+      // Guardar log en Firestore
+      try {
+        await addDoc(collection(db, 'audit_logs'), {
+          action: event.id ? 'EVENTO_MODIFICADO' : 'EVENTO_CREADO',
+          entityId: id,
+          entityType: 'evento',
+          details: { title: event.title, space: event.spaceName, date: event.date },
+          user: { uid: user.uid, name: user.displayName, email: user.email },
+          timestamp: now,
+        });
+      } catch (err) {
+        console.warn('Error guardando audit log en Firestore:', err);
+      }
+
+      return id;
+    } catch (err) {
+      console.error('Error guardando evento en Firestore, aplicando fallback local:', err);
+    }
+  }
+
+  // Local Storage Mutation Fallback
+  const current = load<EventEntity[]>(STORAGE_KEYS.EVENTS, initialEvents);
   if (id) {
     const index = current.findIndex((e) => e.id === id);
     if (index >= 0) {
@@ -545,6 +692,13 @@ export async function saveEvent(event: Omit<EventEntity, 'id'> & { id?: string }
         updatedAt: now,
         updatedBy: { uid: user.uid, name: user.displayName, email: user.email },
       };
+    } else {
+      current.unshift({
+        ...event,
+        id,
+        createdAt: now,
+        createdBy: { uid: user.uid, name: user.displayName, email: user.email },
+      });
     }
     addAuditLog({
       action: 'EVENTO_MODIFICADO',
@@ -578,18 +732,35 @@ export async function saveEvent(event: Omit<EventEntity, 'id'> & { id?: string }
 
 export async function deleteEvent(eventId: string): Promise<void> {
   const user = load<UserProfile>(STORAGE_KEYS.USER, {
-    uid: 'admin-1',
-    displayName: 'Administrador General',
-    email: 'admin@empresa.com',
+    uid: auth?.currentUser?.uid || 'admin-1',
+    displayName: auth?.currentUser?.displayName || 'Usuario UdeA',
+    email: auth?.currentUser?.email || 'usuario@udea.edu.co',
     role: 'administrador',
     status: 'aprobado',
     createdAt: '',
     lastLogin: '',
   });
 
+  const now = new Date().toISOString();
+
   if (isFirebaseConfigured && db) {
-    await deleteDoc(doc(db, 'events', eventId));
-    return;
+    try {
+      await deleteDoc(doc(db, 'events', eventId));
+      try {
+        await addDoc(collection(db, 'audit_logs'), {
+          action: 'EVENTO_CANCELADO',
+          entityId: eventId,
+          entityType: 'evento',
+          details: { id: eventId },
+          user: { uid: user.uid, name: user.displayName, email: user.email },
+          timestamp: now,
+        });
+      } catch (e) {
+        console.warn('Error guardando audit en Firestore:', e);
+      }
+    } catch (err) {
+      console.error('Error eliminando evento en Firestore:', err);
+    }
   }
 
   const current = load<EventEntity[]>(STORAGE_KEYS.EVENTS, initialEvents);
@@ -609,15 +780,33 @@ export async function deleteEvent(eventId: string): Promise<void> {
   }
 }
 
-// Operaciones de Mutación (Espacios)
+// Operaciones de Mutación (Espacios) en la Nube y Local
 export async function saveSpace(space: Omit<Space, 'id'> & { id?: string }): Promise<string> {
-  const current = load<Space[]>(STORAGE_KEYS.SPACES, initialSpaces);
-  let id = space.id;
   const now = new Date().toISOString();
+  let id = space.id;
 
+  if (isFirebaseConfigured && db) {
+    try {
+      if (!id) {
+        id = `space-${Date.now()}`;
+      }
+      const spaceData: Space = {
+        ...space,
+        id,
+        createdAt: space.createdAt || now,
+      };
+      await setDoc(doc(db, 'spaces', id), spaceData, { merge: true });
+      return id;
+    } catch (err) {
+      console.error('Error guardando espacio en Firestore:', err);
+    }
+  }
+
+  const current = load<Space[]>(STORAGE_KEYS.SPACES, initialSpaces);
   if (id) {
     const idx = current.findIndex((s) => s.id === id);
     if (idx >= 0) current[idx] = { ...current[idx], ...space, id };
+    else current.push({ ...space, id, createdAt: now });
   } else {
     id = `space-${Date.now()}`;
     current.push({ ...space, id, createdAt: now });
@@ -628,15 +817,47 @@ export async function saveSpace(space: Omit<Space, 'id'> & { id?: string }): Pro
   return id;
 }
 
-// Operaciones de Mutación (Personas)
-export async function savePerson(person: Omit<Person, 'id'> & { id?: string }): Promise<string> {
-  const current = load<Person[]>(STORAGE_KEYS.PEOPLE, initialPeople);
-  let id = person.id;
-  const now = new Date().toISOString();
+export async function deleteSpace(spaceId: string): Promise<void> {
+  if (isFirebaseConfigured && db) {
+    try {
+      await deleteDoc(doc(db, 'spaces', spaceId));
+    } catch (err) {
+      console.error('Error eliminando espacio en Firestore:', err);
+    }
+  }
+  const current = load<Space[]>(STORAGE_KEYS.SPACES, initialSpaces);
+  const filtered = current.filter((s) => s.id !== spaceId);
+  save(STORAGE_KEYS.SPACES, filtered);
+  spaceListeners.forEach((fn) => fn(filtered));
+}
 
+// Operaciones de Mutación (Personas) en la Nube y Local
+export async function savePerson(person: Omit<Person, 'id'> & { id?: string }): Promise<string> {
+  const now = new Date().toISOString();
+  let id = person.id;
+
+  if (isFirebaseConfigured && db) {
+    try {
+      if (!id) {
+        id = `person-${Date.now()}`;
+      }
+      const personData: Person = {
+        ...person,
+        id,
+        createdAt: person.createdAt || now,
+      };
+      await setDoc(doc(db, 'people', id), personData, { merge: true });
+      return id;
+    } catch (err) {
+      console.error('Error guardando persona en Firestore:', err);
+    }
+  }
+
+  const current = load<Person[]>(STORAGE_KEYS.PEOPLE, initialPeople);
   if (id) {
     const idx = current.findIndex((p) => p.id === id);
     if (idx >= 0) current[idx] = { ...current[idx], ...person, id };
+    else current.push({ ...person, id, createdAt: now });
   } else {
     id = `person-${Date.now()}`;
     current.push({ ...person, id, createdAt: now });
@@ -647,23 +868,61 @@ export async function savePerson(person: Omit<Person, 'id'> & { id?: string }): 
   return id;
 }
 
+export async function deletePerson(personId: string): Promise<void> {
+  if (isFirebaseConfigured && db) {
+    try {
+      await deleteDoc(doc(db, 'people', personId));
+    } catch (err) {
+      console.error('Error eliminando persona en Firestore:', err);
+    }
+  }
+  const current = load<Person[]>(STORAGE_KEYS.PEOPLE, initialPeople);
+  const filtered = current.filter((p) => p.id !== personId);
+  save(STORAGE_KEYS.PEOPLE, filtered);
+  peopleListeners.forEach((fn) => fn(filtered));
+}
+
 // Operaciones de Solicitud de Participación y Confirmación por Token
-export async function createParticipationRequest(req: Omit<ParticipationRequest, 'id' | 'token' | 'createdAt'>): Promise<ParticipationRequest> {
-  const current = load<ParticipationRequest[]>(STORAGE_KEYS.REQUESTS, initialRequests);
+export async function createParticipationRequest(
+  req: Omit<ParticipationRequest, 'id' | 'token' | 'createdAt'>
+): Promise<ParticipationRequest> {
+  const now = new Date().toISOString();
   const id = `req-${Date.now()}`;
   const token = `tk_${Math.random().toString(36).substring(2, 12)}_${Date.now()}`;
   const newReq: ParticipationRequest = {
     ...req,
     id,
     token,
-    createdAt: new Date().toISOString(),
+    createdAt: now,
   };
 
+  if (isFirebaseConfigured && db) {
+    try {
+      await setDoc(doc(db, 'participation_requests', id), newReq);
+      try {
+        await addDoc(collection(db, 'notifications'), {
+          userId: 'ALL_ADMINS',
+          type: 'solicitud',
+          title: 'Solicitud de Participación Enviada',
+          message: `Se ha invitado a ${req.personName} para el evento "${req.eventTitle}".`,
+          eventId: req.eventId,
+          read: false,
+          createdAt: now,
+        });
+      } catch (e) {
+        console.warn('Error guardando notif en Firestore:', e);
+      }
+      return newReq;
+    } catch (err) {
+      console.error('Error guardando solicitud en Firestore:', err);
+    }
+  }
+
+  const current = load<ParticipationRequest[]>(STORAGE_KEYS.REQUESTS, initialRequests);
   current.unshift(newReq);
   save(STORAGE_KEYS.REQUESTS, current);
   requestListeners.forEach((fn) => fn(current));
 
-  // Generar notificación en el sistema
   addNotification({
     userId: 'ALL_ADMINS',
     type: 'solicitud',
@@ -680,18 +939,73 @@ export async function respondToParticipationRequest(
   newStatus: 'confirmada' | 'rechazada',
   notes?: string
 ): Promise<ParticipationRequest | null> {
+  const now = new Date().toISOString();
+
+  if (isFirebaseConfigured && db) {
+    try {
+      const q = query(collection(db, 'participation_requests'), where('token', '==', token));
+      const snapshot = await getDocs(q);
+      if (!snapshot.empty) {
+        const reqDoc = snapshot.docs[0];
+        const reqData = reqDoc.data() as ParticipationRequest;
+        await updateDoc(doc(db, 'participation_requests', reqDoc.id), {
+          status: newStatus,
+          respondedAt: now,
+          ...(notes ? { responseNotes: notes } : {}),
+        });
+
+        // Notificación en Firestore
+        try {
+          await addDoc(collection(db, 'notifications'), {
+            userId: 'ALL_ADMINS',
+            type: newStatus === 'confirmada' ? 'confirmacion' : 'rechazo',
+            title: newStatus === 'confirmada' ? 'Participación Confirmada' : 'Participación Rechazada',
+            message: `${reqData.personName} ha ${newStatus === 'confirmada' ? 'CONFIRMADO' : 'RECHAZADO'} su participación en el evento "${reqData.eventTitle}".`,
+            eventId: reqData.eventId,
+            read: false,
+            createdAt: now,
+          });
+        } catch (e) {
+          console.warn('Error guardando notificación en Firestore:', e);
+        }
+
+        // Si confirmó, actualizar estado del evento en Firestore
+        if (newStatus === 'confirmada') {
+          try {
+            await updateDoc(doc(db, 'events', reqData.eventId), {
+              status: 'confirmado',
+              updatedAt: now,
+            });
+          } catch (e) {
+            console.warn('Error confirmando evento en Firestore:', e);
+          }
+        }
+
+        return {
+          ...reqData,
+          id: reqDoc.id,
+          status: newStatus,
+          respondedAt: now,
+          ...(notes ? { responseNotes: notes } : {}),
+        };
+      }
+    } catch (err) {
+      console.error('Error respondiendo solicitud en Firestore:', err);
+    }
+  }
+
+  // Fallback Local Storage
   const current = load<ParticipationRequest[]>(STORAGE_KEYS.REQUESTS, initialRequests);
   const target = current.find((r) => r.token === token);
   if (!target) return null;
 
   target.status = newStatus;
-  target.respondedAt = new Date().toISOString();
+  target.respondedAt = now;
   if (notes) target.responseNotes = notes;
 
   save(STORAGE_KEYS.REQUESTS, current);
   requestListeners.forEach((fn) => fn(current));
 
-  // Notificar en el centro de alertas
   addNotification({
     userId: 'ALL_ADMINS',
     type: newStatus === 'confirmada' ? 'confirmacion' : 'rechazo',
@@ -700,7 +1014,6 @@ export async function respondToParticipationRequest(
     eventId: target.eventId,
   });
 
-  // Si confirmó, revisar si actualizamos el estado del evento
   if (newStatus === 'confirmada') {
     const events = load<EventEntity[]>(STORAGE_KEYS.EVENTS, initialEvents);
     const evt = events.find((e) => e.id === target.eventId);
@@ -759,3 +1072,4 @@ export function addAuditLog(log: Omit<AuditLog, 'id' | 'timestamp'>): void {
   save(STORAGE_KEYS.AUDIT, current);
   auditListeners.forEach((fn) => fn(current));
 }
+

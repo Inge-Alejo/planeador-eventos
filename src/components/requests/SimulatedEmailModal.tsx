@@ -272,7 +272,7 @@ Planeador de Eventos Académicos`;
               {/* Token de seguridad */}
               <div className="mt-5 pt-3 border-t border-slate-100 flex items-center justify-between text-[10px] text-slate-400 font-mono">
                 <span>Ref: tk_{request.token.slice(0, 10)}...</span>
-                <span>Zona: America/Bogota</span>
+                <span>UdeA Medicina</span>
               </div>
             </div>
           </div>
