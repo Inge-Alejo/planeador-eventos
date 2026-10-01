@@ -10,7 +10,17 @@ import {
   signOut as fbSignOut,
   onAuthStateChanged,
 } from 'firebase/auth';
-import { doc, getDoc, setDoc, onSnapshot, serverTimestamp } from 'firebase/firestore';
+import {
+  doc,
+  getDoc,
+  setDoc,
+  onSnapshot,
+  serverTimestamp,
+  collection,
+  query,
+  where,
+  getDocs,
+} from 'firebase/firestore';
 
 interface AuthContextType {
   user: UserProfile | null;
@@ -207,6 +217,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         cleanEmail === 'proyectostic.med@udea.edu.co';
 
       if (isFirebaseConfigured && auth && db) {
+        // Validar unicidad en Firestore
+        const usersRef = collection(db, 'users');
+        const q = query(usersRef, where('email', '==', cleanEmail));
+        const userQuerySnap = await getDocs(q);
+        if (!userQuerySnap.empty) {
+          const err: any = new Error(
+            'Ya existe una cuenta registrada con este correo electrónico. Por favor inicia sesión o restablece tu contraseña.'
+          );
+          err.code = 'auth/email-already-in-use';
+          throw err;
+        }
+
         const userCred = await createUserWithEmailAndPassword(auth, cleanEmail, pass);
         if (displayName) {
           await updateProfile(userCred.user, { displayName });
@@ -227,7 +249,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setUser(newProfile);
         localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(newProfile));
       } else {
-        // Fallback local simulado
+        // Fallback local simulado: validar unicidad
+        const rawSaved = localStorage.getItem('eventflow_users');
+        const savedUsers: UserProfile[] = rawSaved ? JSON.parse(rawSaved) : [];
+        const exists = savedUsers.some((u) => u.email.toLowerCase() === cleanEmail);
+        if (exists) {
+          const err: any = new Error(
+            'Ya existe una cuenta registrada con este correo electrónico. Por favor inicia sesión.'
+          );
+          err.code = 'auth/email-already-in-use';
+          throw err;
+        }
+
         const demoProfile: UserProfile = {
           uid: 'user-' + Date.now(),
           displayName: displayName || cleanEmail.split('@')[0],
@@ -237,6 +270,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           createdAt: new Date().toISOString(),
           lastLogin: new Date().toISOString(),
         };
+        savedUsers.push(demoProfile);
+        localStorage.setItem('eventflow_users', JSON.stringify(savedUsers));
         setUser(demoProfile);
         localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(demoProfile));
       }

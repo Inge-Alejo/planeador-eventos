@@ -24,6 +24,7 @@ export const PersonModal: React.FC<PersonModalProps> = ({
   const [department, setDepartment] = useState('');
   const [status, setStatus] = useState<'activo' | 'inactivo'>('activo');
   const [notes, setNotes] = useState('');
+  const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
@@ -44,17 +45,22 @@ export const PersonModal: React.FC<PersonModalProps> = ({
       setStatus('activo');
       setNotes('');
     }
+    setError(null);
   }, [personToEdit, isOpen]);
 
   if (!isOpen) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError(null);
+
     if (!isAdmin) {
-      return alert('Acceso restringido:\n\nSolo el perfil Superadministrador puede registrar o editar personas en el directorio.');
+      setError('Acceso restringido: Solo el perfil Superadministrador puede registrar o editar personas.');
+      return;
     }
     if (!firstName.trim() || !lastName.trim() || !email.trim()) {
-      return alert('Por favor ingresa nombre, apellido y correo electrónico.');
+      setError('Por favor ingresa nombre, apellido y correo electrónico.');
+      return;
     }
 
     setIsSubmitting(true);
@@ -72,7 +78,7 @@ export const PersonModal: React.FC<PersonModalProps> = ({
       });
       onClose();
     } catch (err: any) {
-      alert('Error guardando persona: ' + err.message);
+      setError(err.message || 'Error guardando persona.');
     } finally {
       setIsSubmitting(false);
     }
@@ -98,7 +104,13 @@ export const PersonModal: React.FC<PersonModalProps> = ({
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="mt-5 space-y-4">
+        {error && (
+          <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-600 font-medium">
+            {error}
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="mt-4 space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1">Nombre *</label>

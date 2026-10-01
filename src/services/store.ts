@@ -104,6 +104,16 @@ const initialSpaces: Space[] = [
 // Semilla inicial de personas del equipo
 const initialPeople: Person[] = [
   {
+    id: 'person-proyectostic',
+    firstName: 'Alejandro',
+    lastName: 'Proyectos TIC',
+    email: 'proyectostic.med@udea.edu.co',
+    roleTitle: 'Líder Proyectos TIC & Superadministrador',
+    department: 'Facultad de Medicina - UdeA',
+    status: 'activo',
+    createdAt: new Date().toISOString(),
+  },
+  {
     id: 'person-1',
     firstName: 'Alejandro',
     lastName: 'Gómez',
@@ -566,16 +576,60 @@ export function subscribeToPeople(callback: (people: Person[]) => void): () => v
           return;
         }
         const data = snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as Person));
+        // Asegurar que el perfil de superadmin proyectostic.med@udea.edu.co exista en la lista
+        const hasAdminPerson = data.some((p) => p.email.toLowerCase() === 'proyectostic.med@udea.edu.co');
+        if (!hasAdminPerson && auth?.currentUser) {
+          const adminPerson: Person = {
+            id: 'person-proyectostic',
+            firstName: 'Alejandro',
+            lastName: 'Proyectos TIC',
+            email: 'proyectostic.med@udea.edu.co',
+            roleTitle: 'Líder Proyectos TIC & Superadministrador',
+            department: 'Facultad de Medicina - UdeA',
+            status: 'activo',
+            createdAt: new Date().toISOString(),
+          };
+          setDoc(doc(firestore, 'people', adminPerson.id), adminPerson, { merge: true }).catch(console.warn);
+          data.unshift(adminPerson);
+        }
         callback(data);
       },
       (error) => {
         console.warn('Firestore people subscription error, fallback local:', error);
-        callback(load(STORAGE_KEYS.PEOPLE, initialPeople));
+        const localPeople = load<Person[]>(STORAGE_KEYS.PEOPLE, initialPeople);
+        if (!localPeople.some((p) => p.email.toLowerCase() === 'proyectostic.med@udea.edu.co')) {
+          localPeople.unshift({
+            id: 'person-proyectostic',
+            firstName: 'Alejandro',
+            lastName: 'Proyectos TIC',
+            email: 'proyectostic.med@udea.edu.co',
+            roleTitle: 'Líder Proyectos TIC & Superadministrador',
+            department: 'Facultad de Medicina - UdeA',
+            status: 'activo',
+            createdAt: new Date().toISOString(),
+          });
+          save(STORAGE_KEYS.PEOPLE, localPeople);
+        }
+        callback(localPeople);
       }
     );
     return unsub;
   }
-  callback(load(STORAGE_KEYS.PEOPLE, initialPeople));
+  const localPeople = load<Person[]>(STORAGE_KEYS.PEOPLE, initialPeople);
+  if (!localPeople.some((p) => p.email.toLowerCase() === 'proyectostic.med@udea.edu.co')) {
+    localPeople.unshift({
+      id: 'person-proyectostic',
+      firstName: 'Alejandro',
+      lastName: 'Proyectos TIC',
+      email: 'proyectostic.med@udea.edu.co',
+      roleTitle: 'Líder Proyectos TIC & Superadministrador',
+      department: 'Facultad de Medicina - UdeA',
+      status: 'activo',
+      createdAt: new Date().toISOString(),
+    });
+    save(STORAGE_KEYS.PEOPLE, localPeople);
+  }
+  callback(localPeople);
   peopleListeners.add(callback);
   return () => peopleListeners.delete(callback);
 }
@@ -963,6 +1017,31 @@ export async function deleteSpace(spaceId: string): Promise<void> {
 
 // Operaciones de Mutación (Personas) en la Nube y Local
 export async function savePerson(person: Omit<Person, 'id'> & { id?: string }): Promise<string> {
+  const cleanEmail = person.email.trim().toLowerCase();
+
+  // Validar que no exista otra persona con el mismo correo electrónico
+  if (isFirebaseConfigured && db) {
+    try {
+      const q = query(collection(db, 'people'), where('email', '==', cleanEmail));
+      const snap = await getDocs(q);
+      const isDuplicate = snap.docs.some((d) => d.id !== person.id);
+      if (isDuplicate) {
+        throw new Error(`Ya existe una persona registrada en el directorio con el correo "${cleanEmail}".`);
+      }
+    } catch (err: any) {
+      if (err.message && err.message.includes('Ya existe una persona registrada')) {
+        throw err;
+      }
+      console.warn('Error validando unicidad de correo en Firestore:', err);
+    }
+  }
+
+  const current = load<Person[]>(STORAGE_KEYS.PEOPLE, initialPeople);
+  const localDuplicate = current.some((p) => p.email.toLowerCase() === cleanEmail && p.id !== person.id);
+  if (localDuplicate) {
+    throw new Error(`Ya existe una persona registrada en el directorio con el correo "${cleanEmail}".`);
+  }
+
   const now = new Date().toISOString();
   let id = person.id;
 
@@ -983,7 +1062,6 @@ export async function savePerson(person: Omit<Person, 'id'> & { id?: string }): 
     }
   }
 
-  const current = load<Person[]>(STORAGE_KEYS.PEOPLE, initialPeople);
   if (id) {
     const idx = current.findIndex((p) => p.id === id);
     if (idx >= 0) current[idx] = { ...current[idx], ...person, id };
