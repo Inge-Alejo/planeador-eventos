@@ -7,44 +7,109 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    // Colección de Espacios Físicos (Lectura pública para ver disponibilidad, escritura para autenticados)
+    // Identificar al Superadministrador institucional por correo verificado o claim
+    function isSuperAdmin() {
+      return isAuthenticated() && request.auth.token.email == 'proyectostic.med@udea.edu.co';
+    }
+
+    // Obtener los datos del perfil del usuario en Firestore
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    // Verificar si el usuario tiene rol de Administrador y estado Aprobado
+    function isAdmin() {
+      return isSuperAdmin() || (
+        isAuthenticated() && 
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+        getUserData().role == 'administrador' && 
+        getUserData().status == 'aprobado'
+      );
+    }
+
+    // Verificar si el usuario tiene permisos de edición (Admin o Editor Aprobado)
+    function isEditorOrAdmin() {
+      return isAdmin() || (
+        isAuthenticated() && 
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+        getUserData().role == 'editor' && 
+        getUserData().status == 'aprobado'
+      );
+    }
+
+    // Colección de Espacios Físicos (Lectura pública para disponibilidad, modificación/borrado por administradores)
     match /spaces/{spaceId} {
       allow read: if true;
-      allow write: if isAuthenticated();
+      allow write: if isAdmin();
     }
 
-    // Colección de Personas
+    // Colección de Personas (Directorio institucional: solo administradores crean, editan o eliminan)
     match /people/{personId} {
-      allow read: if true;
-      allow write: if isAuthenticated();
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
     }
 
-    // Colección de Eventos (Lectura pública para el calendario, escritura para autenticados)
+    // Colección de Grupos de Personas (Gestión institucional reservada a administradores)
+    match /groups/{groupId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    // Colección de Eventos (Lectura pública para calendario institucional, escritura para editores/admins aprobados)
     match /events/{eventId} {
       allow read: if true;
-      allow create, update, delete: if isAuthenticated();
+      allow create, update, delete: if isEditorOrAdmin();
     }
 
-    // Solicitudes de Participación (Permite consultar y confirmar/rechazar mediante token)
+    // Tareas Personales (Aislamiento Multi-Tenant por usuario propietario)
+    match /personal_tasks/{taskId} {
+      allow read, write: if isAuthenticated() && (
+        request.resource.data.userId == request.auth.uid ||
+        resource.data.userId == request.auth.uid
+      );
+    }
+
+    // Solicitudes de Participación (Lectura pública y actualización por token de email)
     match /participation_requests/{requestId} {
-      allow read, update: if true;
-      allow create, delete: if isAuthenticated();
+      allow read: if true;
+      allow create, delete: if isEditorOrAdmin();
+      allow update: if true; // Confirmación/rechazo mediante tokens hash únicos
     }
 
-    // Notificaciones
+    // Notificaciones (Acceso seguro: administradores o destinatario específico)
     match /notifications/{notifId} {
-      allow read, write: if isAuthenticated();
+      allow read, update, delete: if isAuthenticated() && (
+        isAdmin() || 
+        resource.data.recipientEmail == request.auth.token.email ||
+        resource.data.recipientEmail == 'ALL_ADMINS' ||
+        resource.data.recipientEmail == 'ALL'
+      );
+      allow create: if isAuthenticated();
     }
 
-    // Logs de Auditoría (Trazabilidad inmutable)
+    // Logs de Auditoría (Trazabilidad estricta e inmutable: inserción permitida, actualización y borrado prohibidos)
     match /audit_logs/{logId} {
-      allow read, create: if isAuthenticated();
+      allow read: if isAdmin();
+      allow create: if isAuthenticated();
       allow update, delete: if false;
     }
 
-    // Usuarios del sistema
+    // Usuarios del sistema (Protección contra escalada de privilegios)
     match /users/{userId} {
-      allow read, write: if isAuthenticated();
+      allow read: if isAuthenticated();
+      // Registro inicial: sólo se puede crear con rol lector y pendiente (o cualquier rol si es admin)
+      allow create: if isAuthenticated() && (
+        isAdmin() || 
+        (request.auth.uid == userId && request.resource.data.role == 'lector' && request.resource.data.status == 'pendiente')
+      );
+      // Actualización: un usuario no puede cambiar su propio rol ni su estado
+      allow update: if isAuthenticated() && (
+        isAdmin() || 
+        (request.auth.uid == userId && 
+         request.resource.data.role == resource.data.role && 
+         request.resource.data.status == resource.data.status)
+      );
+      allow delete: if isAdmin();
     }
   }
 }

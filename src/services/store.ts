@@ -1002,17 +1002,51 @@ export async function saveSpace(space: Omit<Space, 'id'> & { id?: string }): Pro
 }
 
 export async function deleteSpace(spaceId: string): Promise<void> {
+  const user = load<UserProfile>(STORAGE_KEYS.USER, {
+    uid: auth?.currentUser?.uid || 'admin-1',
+    displayName: auth?.currentUser?.displayName || 'Usuario UdeA',
+    email: auth?.currentUser?.email || 'usuario@udea.edu.co',
+    role: 'administrador',
+    status: 'aprobado',
+    createdAt: '',
+    lastLogin: '',
+  });
+  const now = new Date().toISOString();
+
   if (isFirebaseConfigured && db) {
     try {
       await deleteDoc(doc(db, 'spaces', spaceId));
+      try {
+        await addDoc(collection(db, 'audit_logs'), {
+          action: 'ESPACIO_ELIMINADO',
+          entityId: spaceId,
+          entityType: 'espacio',
+          details: { id: spaceId },
+          user: { uid: user.uid, name: user.displayName, email: user.email },
+          timestamp: now,
+        });
+      } catch (e) {
+        console.warn('Error guardando audit en Firestore:', e);
+      }
     } catch (err) {
       console.error('Error eliminando espacio en Firestore:', err);
     }
   }
   const current = load<Space[]>(STORAGE_KEYS.SPACES, initialSpaces);
+  const target = current.find((s) => s.id === spaceId);
   const filtered = current.filter((s) => s.id !== spaceId);
   save(STORAGE_KEYS.SPACES, filtered);
   spaceListeners.forEach((fn) => fn(filtered));
+
+  if (target) {
+    addAuditLog({
+      action: 'ESPACIO_ELIMINADO',
+      entityId: spaceId,
+      entityType: 'espacio',
+      details: { name: target.name, location: target.location },
+      user: { uid: user.uid, name: user.displayName, email: user.email },
+    });
+  }
 }
 
 // Operaciones de Mutación (Personas) en la Nube y Local
@@ -1077,17 +1111,51 @@ export async function savePerson(person: Omit<Person, 'id'> & { id?: string }): 
 }
 
 export async function deletePerson(personId: string): Promise<void> {
+  const user = load<UserProfile>(STORAGE_KEYS.USER, {
+    uid: auth?.currentUser?.uid || 'admin-1',
+    displayName: auth?.currentUser?.displayName || 'Usuario UdeA',
+    email: auth?.currentUser?.email || 'usuario@udea.edu.co',
+    role: 'administrador',
+    status: 'aprobado',
+    createdAt: '',
+    lastLogin: '',
+  });
+  const now = new Date().toISOString();
+
   if (isFirebaseConfigured && db) {
     try {
       await deleteDoc(doc(db, 'people', personId));
+      try {
+        await addDoc(collection(db, 'audit_logs'), {
+          action: 'PERSONA_ELIMINADA',
+          entityId: personId,
+          entityType: 'persona',
+          details: { id: personId },
+          user: { uid: user.uid, name: user.displayName, email: user.email },
+          timestamp: now,
+        });
+      } catch (e) {
+        console.warn('Error guardando audit en Firestore:', e);
+      }
     } catch (err) {
       console.error('Error eliminando persona en Firestore:', err);
     }
   }
   const current = load<Person[]>(STORAGE_KEYS.PEOPLE, initialPeople);
+  const target = current.find((p) => p.id === personId);
   const filtered = current.filter((p) => p.id !== personId);
   save(STORAGE_KEYS.PEOPLE, filtered);
   peopleListeners.forEach((fn) => fn(filtered));
+
+  if (target) {
+    addAuditLog({
+      action: 'PERSONA_ELIMINADA',
+      entityId: personId,
+      entityType: 'persona',
+      details: { name: `${target.firstName} ${target.lastName}`.trim(), email: target.email, roleTitle: target.roleTitle },
+      user: { uid: user.uid, name: user.displayName, email: user.email },
+    });
+  }
 }
 
 // Operaciones de Mutación (Grupos de Personas) en la Nube y Local
