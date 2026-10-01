@@ -212,7 +212,8 @@ export const EventModal: React.FC<EventModalProps> = ({
         role="dialog"
         aria-modal="true"
         aria-labelledby="modal-event-title"
-        className="relative w-full max-w-2xl max-h-[90vh] flex flex-col rounded-3xl border border-slate-200 bg-white shadow-2xl overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+        className="relative w-full max-w-2xl max-h-[90vh] flex flex-col rounded-3xl border border-slate-200 bg-white shadow-2xl overflow-hidden cursor-default"
       >
         {/* Header Modal */}
         <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4 bg-slate-50/50">

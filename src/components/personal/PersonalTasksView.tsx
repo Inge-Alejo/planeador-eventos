@@ -616,7 +616,8 @@ export const PersonalTasksView: React.FC<PersonalTasksViewProps> = ({
             role="dialog"
             aria-modal="true"
             aria-labelledby="modal-personal-task-title"
-            className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden animate-scale-up"
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden animate-scale-up cursor-default"
           >
             <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
               <h3 id="modal-personal-task-title" className="font-bold text-slate-800 text-base flex items-center gap-2">

@@ -100,7 +100,8 @@ export const PersonModal: React.FC<PersonModalProps> = ({
         role="dialog"
         aria-modal="true"
         aria-labelledby="modal-person-title"
-        className="relative w-full max-w-lg rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+        className="relative w-full max-w-lg rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl cursor-default"
       >
         <div className="flex items-center justify-between border-b border-slate-100 pb-4">
           <div className="flex items-center gap-3">

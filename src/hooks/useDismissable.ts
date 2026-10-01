@@ -9,7 +9,8 @@ interface UseDismissableOptions {
 }
 
 /**
- * Hook to handle Escape key press, clicking outside/backdrop, and optional body scroll locking.
+ * Hook ultrarrobusto para cierre accesible mediante tecla Escape y clic por fuera / backdrop.
+ * Utiliza capture phase para garantizar que ningún elemento interno trague el evento.
  */
 export function useDismissable<T extends HTMLElement = HTMLDivElement>({
   onDismiss,
@@ -21,11 +22,12 @@ export function useDismissable<T extends HTMLElement = HTMLDivElement>({
   const contentRef = useRef<T | null>(null);
   const onDismissRef = useRef(onDismiss);
 
+  // Mantener siempre la referencia más fresca a la función de cierre
   useEffect(() => {
     onDismissRef.current = onDismiss;
   }, [onDismiss]);
 
-  // Lock body scroll when modal is open
+  // Bloqueo de scroll de fondo mientras esté activo
   useEffect(() => {
     if (!isOpen || !lockScroll) return;
 
@@ -37,39 +39,42 @@ export function useDismissable<T extends HTMLElement = HTMLDivElement>({
     };
   }, [isOpen, lockScroll]);
 
-  // Handle Escape key and outside click
+  // Manejo de Escape (fase de captura) y clic por fuera
   useEffect(() => {
     if (!isOpen) return;
 
+    // Escuchar Escape en fase de captura para que ningún input lo trague
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (closeOnEscape && e.key === 'Escape') {
+      if (closeOnEscape && (e.key === 'Escape' || e.key === 'Esc' || e.keyCode === 27)) {
+        e.preventDefault();
         e.stopPropagation();
         onDismissRef.current();
       }
     };
 
-    const handleMouseDown = (e: MouseEvent) => {
-      if (
-        closeOnOutsideClick &&
-        contentRef.current &&
-        !contentRef.current.contains(e.target as Node)
-      ) {
+    // Detectar clic por fuera de la tarjeta modal
+    const handlePointerDown = (e: MouseEvent | PointerEvent) => {
+      if (!closeOnOutsideClick || !contentRef.current) return;
+      const target = e.target as Node;
+      if (!contentRef.current.contains(target)) {
         onDismissRef.current();
       }
     };
 
-    window.addEventListener('keydown', handleKeyDown);
-    document.addEventListener('mousedown', handleMouseDown);
+    window.addEventListener('keydown', handleKeyDown, true);
+    document.addEventListener('pointerdown', handlePointerDown, true);
 
     return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      document.removeEventListener('mousedown', handleMouseDown);
+      window.removeEventListener('keydown', handleKeyDown, true);
+      document.removeEventListener('pointerdown', handlePointerDown, true);
     };
   }, [isOpen, closeOnEscape, closeOnOutsideClick]);
 
-  // Handler for explicit backdrop click (e.g. onClick={handleBackdropClick} on outer container)
+  // Manejador directo sobre el contenedor de backdrop (fondo oscuro)
   const handleBackdropClick = useCallback((e: React.MouseEvent) => {
     if (e.target === e.currentTarget) {
+      e.preventDefault();
+      e.stopPropagation();
       onDismissRef.current();
     }
   }, []);

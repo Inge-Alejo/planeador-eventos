@@ -91,7 +91,8 @@ export const EventDetailDrawer: React.FC<EventDetailDrawerProps> = ({
         role="dialog"
         aria-modal="true"
         aria-label="Detalle del Evento"
-        className="relative w-full max-w-xl h-full bg-white shadow-2xl flex flex-col overflow-hidden animate-in slide-in-from-right duration-200"
+        onClick={(e) => e.stopPropagation()}
+        className="relative w-full max-w-xl h-full bg-white shadow-2xl flex flex-col overflow-hidden animate-in slide-in-from-right duration-200 cursor-default"
       >
         {/* Header Drawer */}
         <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4 bg-slate-50/50">

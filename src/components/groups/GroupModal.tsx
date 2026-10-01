@@ -123,7 +123,8 @@ export const GroupModal: React.FC<GroupModalProps> = ({
         role="dialog"
         aria-modal="true"
         aria-labelledby="modal-group-title"
-        className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-xl max-h-[90vh] flex flex-col overflow-hidden animate-scale-up"
+        onClick={(e) => e.stopPropagation()}
+        className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-xl max-h-[90vh] flex flex-col overflow-hidden animate-scale-up cursor-default"
       >
         {/* Header */}
         <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
