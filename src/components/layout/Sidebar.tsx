@@ -90,14 +90,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <Calendar className="w-5 h-5" />
             </div>
             <div>
-              <span className="font-bold text-slate-900 tracking-tight text-base flex items-center gap-1">
-                EventFlow
-                <span className="rounded-md bg-indigo-50 px-1.5 py-0.5 text-[10px] font-semibold text-indigo-600">
-                  PRO
+              <span className="font-bold text-slate-900 tracking-tight text-sm flex items-center gap-1.5">
+                Planeador Eventos
+                <span className="rounded-md bg-emerald-100 px-1.5 py-0.5 text-[10px] font-bold text-emerald-800 border border-emerald-200">
+                  UdeA
                 </span>
               </span>
-              <p className="text-[11px] text-slate-400 font-medium leading-none">
-                Planeación Empresarial
+              <p className="text-[11px] text-slate-500 font-semibold leading-none mt-0.5">
+                Facultad de Medicina
               </p>
             </div>
           </div>

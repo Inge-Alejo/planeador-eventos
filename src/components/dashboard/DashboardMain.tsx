@@ -47,16 +47,16 @@ export const DashboardMain: React.FC<DashboardMainProps> = ({
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-3xl border border-slate-200/80 bg-gradient-to-r from-white via-indigo-50/20 to-white p-5 shadow-xs">
         <div>
           <div className="flex items-center gap-2">
-            <span className="inline-flex items-center gap-1 rounded-full bg-indigo-50 px-2.5 py-0.5 text-xs font-bold text-indigo-700">
-              <Sparkles className="w-3.5 h-3.5" />
-              Centro de Control Operativo
+            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-bold text-emerald-800 border border-emerald-200">
+              <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
+              Facultad de Medicina • Universidad de Antioquia
             </span>
           </div>
           <h1 className="mt-1 text-xl sm:text-2xl font-black tracking-tight text-slate-900">
-            Planeación y Monitoreo en Tiempo Real
+            Planeación y Programación de Eventos
           </h1>
           <p className="text-xs text-slate-500 mt-0.5">
-            Detección automática de conflictos, disponibilidad de espacios y gestión de personal.
+            Detección automática de conflictos, control de disponibilidad de auditorios y gestión de personal académico.
           </p>
         </div>
 
