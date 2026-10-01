@@ -297,3 +297,158 @@ export async function sendParticipationEmail(
     htmlContent,
   });
 }
+
+// Plantilla HTML de Notificación para el Super Administrador cuando un usuario se registra
+export function generateNewUserRegistrationAdminNotificationHtml(params: {
+  userName: string;
+  userEmail: string;
+  registrationDate: string;
+  baseUrl?: string;
+}): string {
+  const origin =
+    params.baseUrl ||
+    (typeof window !== 'undefined'
+      ? window.location.origin
+      : 'https://planeador-eventos.vercel.app');
+  const adminPanelUrl = `${origin}?tab=usuarios`;
+
+  const safeUserName = escapeHtml(params.userName);
+  const safeUserEmail = escapeHtml(params.userEmail);
+  const safeDate = escapeHtml(params.registrationDate);
+
+  return `
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Nueva Solicitud de Registro de Usuario</title>
+</head>
+<body style="margin: 0; padding: 0; background-color: #f1f5f9; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #1e293b;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color: #f1f5f9; padding: 30px 10px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="100%" style="max-width: 600px; background-color: #ffffff; border-radius: 20px; overflow: hidden; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.08); border: 1px solid #e2e8f0;" cellspacing="0" cellpadding="0">
+          
+          <!-- Encabezado Institucional UdeA -->
+          <tr>
+            <td style="background: linear-gradient(135deg, #065f46 0%, #047857 50%, #1e1b4b 100%); padding: 32px 30px; text-align: center;">
+              <div style="display: inline-block; background-color: rgba(255, 255, 255, 0.15); border-radius: 9999px; padding: 4px 14px; margin-bottom: 12px; border: 1px solid rgba(255, 255, 255, 0.25);">
+                <span style="color: #a7f3d0; font-size: 11px; font-weight: bold; letter-spacing: 0.5px; text-transform: uppercase;">
+                  Universidad de Antioquia • Facultad de Medicina
+                </span>
+              </div>
+              <h1 style="color: #ffffff; font-size: 22px; font-weight: 800; margin: 0; line-height: 1.3;">
+                🔔 Nueva Solicitud de Registro
+              </h1>
+              <p style="color: #d1fae5; font-size: 13px; margin: 6px 0 0 0; font-weight: 500;">
+                Notificación Oficial para el Super Administrador
+              </p>
+            </td>
+          </tr>
+
+          <!-- Cuerpo Principal -->
+          <tr>
+            <td style="padding: 35px 30px;">
+              <p style="font-size: 15px; line-height: 1.6; margin-top: 0; color: #334155;">
+                Hola, <strong>Superadministrador</strong>,
+              </p>
+              <p style="font-size: 14px; line-height: 1.6; color: #475569;">
+                Un nuevo usuario acaba de registrarse en la plataforma del <strong>Planeador de Eventos & Agendas</strong> de la Facultad de Medicina y su cuenta se encuentra actualmente en estado <strong style="color: #b45309; background-color: #fef3c7; padding: 2px 8px; border-radius: 6px;">Pendiente de Aprobación</strong>.
+              </p>
+
+              <!-- Tarjeta de Detalles del Solicitante -->
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 14px; margin: 24px 0; padding: 20px;">
+                <tr>
+                  <td style="padding-bottom: 12px;">
+                    <span style="font-size: 11px; font-weight: bold; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px;">👤 Nombre del Solicitante:</span>
+                    <div style="font-size: 16px; font-weight: 700; color: #0f172a; margin-top: 2px;">${safeUserName}</div>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding-bottom: 12px;">
+                    <span style="font-size: 11px; font-weight: bold; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px;">✉️ Correo Electrónico:</span>
+                    <div style="font-size: 14px; font-weight: 600; color: #4338ca; margin-top: 2px; font-family: monospace;">${safeUserEmail}</div>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding-bottom: 12px;">
+                    <span style="font-size: 11px; font-weight: bold; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px;">📅 Fecha y Hora de Registro:</span>
+                    <div style="font-size: 13px; font-weight: 600; color: #1e293b; margin-top: 2px;">${safeDate}</div>
+                  </td>
+                </tr>
+                <tr>
+                  <td>
+                    <span style="font-size: 11px; font-weight: bold; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px;">🛡️ Estado Asignado:</span>
+                    <div style="font-size: 13px; font-weight: 600; color: #64748b; margin-top: 2px;">Lector (Solo Lectura - Requiere tu autorización para crear/editar)</div>
+                  </td>
+                </tr>
+              </table>
+
+              <!-- Llamado a la Acción -->
+              <div style="text-align: center; margin: 28px 0 16px 0;">
+                <p style="font-size: 13px; color: #475569; margin-bottom: 16px; font-weight: 500;">
+                  Para autorizar a este usuario como <strong>Gestor</strong> o <strong>Administrador</strong>, accede a tu panel de administración:
+                </p>
+                <a href="${adminPanelUrl}" target="_blank" style="display: inline-block; background: linear-gradient(135deg, #059669 0%, #047857 100%); color: #ffffff; text-decoration: none; padding: 14px 28px; border-radius: 12px; font-size: 14px; font-weight: 700; text-align: center; box-shadow: 0 4px 12px rgba(5, 150, 105, 0.3);">
+                  👉 Revisar y Aprobar Usuario en el Panel
+                </a>
+              </div>
+
+              <p style="font-size: 11px; color: #94a3b8; text-align: center; margin-top: 24px; line-height: 1.5;">
+                Recuerda que solo tú como Superadministrador desde tu sesión iniciada tienes los permisos necesarios para aprobar usuarios y conceder roles operativos.
+              </p>
+            </td>
+          </tr>
+
+          <!-- Pie de Página Institucional -->
+          <tr>
+            <td style="background-color: #f8fafc; border-top: 1px solid #e2e8f0; padding: 22px 30px; text-align: center;">
+              <p style="font-size: 11px; color: #64748b; margin: 0; font-weight: 500;">
+                Facultad de Medicina • Universidad de Antioquia
+              </p>
+              <p style="font-size: 10px; color: #94a3b8; margin: 4px 0 0 0;">
+                Medellín, Colombia • Sistema Automatizado de Gestión de Espacios y Eventos
+              </p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+  `.trim();
+}
+
+// Envío automático al Superadministrador cuando se registra un nuevo usuario
+export async function sendNewUserRegistrationNotificationToSuperAdmin(user: {
+  email: string;
+  displayName?: string;
+  uid?: string;
+}): Promise<{ success: boolean; messageId?: string; error?: string }> {
+  const superAdminEmail =
+    (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_SUPERADMIN_EMAIL) ||
+    'proyectostic.med@udea.edu.co';
+
+  const now = new Date();
+  const dateFormatted = new Intl.DateTimeFormat('es-CO', {
+    dateStyle: 'full',
+    timeStyle: 'medium',
+    timeZone: 'America/Bogota',
+  }).format(now);
+
+  const htmlContent = generateNewUserRegistrationAdminNotificationHtml({
+    userName: user.displayName || user.email.split('@')[0],
+    userEmail: user.email,
+    registrationDate: dateFormatted,
+  });
+
+  return await sendEmail({
+    toEmail: superAdminEmail,
+    toName: 'Superadministrador UdeA',
+    subject: `🔔 Nueva Solicitud de Registro: ${user.displayName || user.email} | Planeador UdeA`,
+    htmlContent,
+  });
+}

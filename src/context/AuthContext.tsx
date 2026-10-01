@@ -21,6 +21,8 @@ import {
   where,
   getDocs,
 } from 'firebase/firestore';
+import { sendNewUserRegistrationNotificationToSuperAdmin } from '../services/emailService';
+import { addNotification } from '../services/store';
 
 interface AuthContextType {
   user: UserProfile | null;
@@ -244,6 +246,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         );
         setUser(newProfile);
         localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(newProfile));
+
+        // Enviar correo automático al Superadministrador cuando alguien se registra por primera vez
+        if (!isRootAdmin) {
+          sendNewUserRegistrationNotificationToSuperAdmin({
+            email: cleanEmail,
+            displayName: displayName.trim() || cleanEmail.split('@')[0],
+            uid: userCred.user.uid,
+          }).catch((err) => {
+            console.warn('No se pudo enviar correo de registro al superadmin:', err);
+          });
+
+          // Notificación en la campanita de administración
+          addNotification({
+            userId: 'ALL_ADMINS',
+            recipientEmail: 'proyectostic.med@udea.edu.co',
+            title: 'Nueva Solicitud de Registro',
+            message: `El usuario ${displayName.trim() || cleanEmail} (${cleanEmail}) se ha registrado y solicita aprobación.`,
+            type: 'solicitud',
+          }).catch((err) => {
+            console.warn('No se pudo registrar notificación en el sistema:', err);
+          });
+        }
       } else {
         // Fallback local simulado: validar unicidad
         const rawSaved = localStorage.getItem('eventflow_users');
@@ -270,6 +294,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         localStorage.setItem('eventflow_users', JSON.stringify(savedUsers));
         setUser(demoProfile);
         localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(demoProfile));
+
+        // Enviar correo automático al Superadministrador en modo local
+        if (!isRootAdmin) {
+          sendNewUserRegistrationNotificationToSuperAdmin({
+            email: cleanEmail,
+            displayName: displayName.trim() || cleanEmail.split('@')[0],
+            uid: demoProfile.uid,
+          }).catch((err) => {
+            console.warn('No se pudo enviar correo de registro al superadmin (local):', err);
+          });
+
+          addNotification({
+            userId: 'ALL_ADMINS',
+            recipientEmail: 'proyectostic.med@udea.edu.co',
+            title: 'Nueva Solicitud de Registro',
+            message: `El usuario ${displayName.trim() || cleanEmail} (${cleanEmail}) se ha registrado y solicita aprobación.`,
+            type: 'solicitud',
+          }).catch((err) => {
+            console.warn('No se pudo registrar notificación local:', err);
+          });
+        }
       }
       setIsGuest(false);
       localStorage.removeItem(GUEST_STORAGE_KEY);
