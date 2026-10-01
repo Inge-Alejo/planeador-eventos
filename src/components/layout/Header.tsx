@@ -14,6 +14,7 @@ import {
   Eye,
   Clock,
   Lock,
+  LogIn,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { AppNotification } from '../../types';
@@ -39,7 +40,16 @@ export const Header: React.FC<HeaderProps> = ({
   onToggleMobileSidebar,
   onSelectEventFromNotification,
 }) => {
-  const { user, isAdmin, canEdit, isPending, isReadOnly, switchRole, logout, loginWithGoogle } = useAuth();
+  const {
+    user,
+    isAdmin,
+    canEdit,
+    isPending,
+    isReadOnly,
+    switchRole,
+    logout,
+    openAuthModal,
+  } = useAuth();
   const [showNotifications, setShowNotifications] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
 
@@ -48,7 +58,7 @@ export const Header: React.FC<HeaderProps> = ({
   const handleCreateClick = () => {
     if (!canEdit) {
       if (!user) {
-        alert('Modo Consulta Pública:\n\nCualquier persona puede ver la programación del calendario. Para crear o editar eventos, inicia sesión con Google y solicita autorización al Administrador.');
+        openAuthModal('login');
       } else {
         alert('Cuenta en Modo Solo Lectura:\n\nTu solicitud de acceso está pendiente de aprobación por el Administrador. Solo usuarios aprobados como Gestores o Administradores pueden registrar eventos.');
       }
@@ -213,114 +223,113 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
 
         {/* Perfil & Conmutador de Roles */}
-        <div className="relative">
+        {!user ? (
           <button
-            onClick={() => {
-              setShowProfileMenu(!showProfileMenu);
-              setShowNotifications(false);
-            }}
-            className="flex items-center gap-2 rounded-xl p-1.5 hover:bg-slate-100 transition-colors"
+            onClick={() => openAuthModal('login')}
+            className="flex items-center gap-1.5 rounded-xl bg-slate-900 px-3.5 py-2 text-xs font-bold text-white shadow-xs hover:bg-slate-800 transition-all"
           >
-            {user?.photoURL ? (
-              <img
-                src={user.photoURL}
-                alt={user.displayName}
-                className="h-8 w-8 rounded-full object-cover ring-2 ring-indigo-500/20"
-              />
-            ) : (
-              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-indigo-600 text-xs font-bold text-white shadow-sm">
-                {user?.displayName ? user.displayName.charAt(0) : 'U'}
-              </div>
-            )}
-            <div className="hidden md:block text-left">
-              <p className="text-xs font-semibold text-slate-800 leading-tight">
-                {user?.displayName || 'Usuario'}
-              </p>
-              <div className="flex items-center gap-1">
-                <span
-                  className={`inline-block h-1.5 w-1.5 rounded-full ${
-                    isAdmin ? 'bg-emerald-500' : 'bg-blue-500'
-                  }`}
-                ></span>
-                <span className="text-[11px] font-medium text-slate-500 capitalize">
-                  {user?.role || 'Invitado'}
-                </span>
-              </div>
-            </div>
+            <LogIn className="w-3.5 h-3.5" />
+            <span>Iniciar Sesión</span>
           </button>
-
-          {showProfileMenu && (
-            <div className="absolute right-0 mt-2 w-64 rounded-2xl border border-slate-200 bg-white p-3 shadow-xl z-50 animate-in fade-in slide-in-from-top-2 duration-150">
-              <div className="border-b border-slate-100 pb-3 px-2">
-                <p className="text-xs font-bold text-slate-900">{user?.displayName}</p>
-                <p className="text-[11px] text-slate-500 truncate">{user?.email}</p>
+        ) : (
+          <div className="relative">
+            <button
+              onClick={() => {
+                setShowProfileMenu(!showProfileMenu);
+                setShowNotifications(false);
+              }}
+              className="flex items-center gap-2 rounded-xl p-1.5 hover:bg-slate-100 transition-colors"
+            >
+              {user.photoURL ? (
+                <img
+                  src={user.photoURL}
+                  alt={user.displayName}
+                  className="h-8 w-8 rounded-full object-cover ring-2 ring-indigo-500/20"
+                />
+              ) : (
+                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-indigo-600 text-xs font-bold text-white shadow-sm">
+                  {user.displayName ? user.displayName.charAt(0) : 'U'}
+                </div>
+              )}
+              <div className="hidden md:block text-left">
+                <p className="text-xs font-semibold text-slate-800 leading-tight">
+                  {user.displayName || 'Usuario'}
+                </p>
+                <div className="flex items-center gap-1">
+                  <span
+                    className={`inline-block h-1.5 w-1.5 rounded-full ${
+                      isAdmin ? 'bg-emerald-500' : 'bg-blue-500'
+                    }`}
+                  ></span>
+                  <span className="text-[11px] font-medium text-slate-500 capitalize">
+                    {user.role || 'Invitado'}
+                  </span>
+                </div>
               </div>
+            </button>
 
-              {/* Selector Rápido de Rol (Para pruebas del usuario) */}
-              <div className="py-2">
-                <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400 px-2">
-                  Simular Rol de Usuario
-                </label>
-                <div className="mt-1 grid grid-cols-2 gap-1 bg-slate-100 p-1 rounded-xl">
+            {showProfileMenu && (
+              <div className="absolute right-0 mt-2 w-64 rounded-2xl border border-slate-200 bg-white p-3 shadow-xl z-50 animate-in fade-in slide-in-from-top-2 duration-150">
+                <div className="border-b border-slate-100 pb-3 px-2">
+                  <p className="text-xs font-bold text-slate-900">{user.displayName}</p>
+                  <p className="text-[11px] text-slate-500 truncate">{user.email}</p>
+                </div>
+
+                {/* Selector Rápido de Rol (Para pruebas del usuario) */}
+                <div className="py-2">
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400 px-2">
+                    Simular Rol de Usuario
+                  </label>
+                  <div className="mt-1 grid grid-cols-2 gap-1 bg-slate-100 p-1 rounded-xl">
+                    <button
+                      onClick={() => switchRole('administrador')}
+                      className={`flex items-center justify-center gap-1.5 py-1.5 text-xs font-semibold rounded-lg transition-all ${
+                        isAdmin ? 'bg-white text-indigo-700 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      <ShieldCheck className="w-3.5 h-3.5" />
+                      Admin
+                    </button>
+                    <button
+                      onClick={() => switchRole('usuario')}
+                      className={`flex items-center justify-center gap-1.5 py-1.5 text-xs font-semibold rounded-lg transition-all ${
+                        !isAdmin ? 'bg-white text-indigo-700 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      <User className="w-3.5 h-3.5" />
+                      Usuario
+                    </button>
+                  </div>
+                </div>
+
+                {/* Iniciar con otra cuenta / Salir */}
+                <div className="border-t border-slate-100 pt-2 space-y-1">
                   <button
-                    onClick={() => switchRole('administrador')}
-                    className={`flex items-center justify-center gap-1.5 py-1.5 text-xs font-semibold rounded-lg transition-all ${
-                      isAdmin ? 'bg-white text-indigo-700 shadow-xs' : 'text-slate-600 hover:text-slate-900'
-                    }`}
+                    onClick={() => {
+                      setShowProfileMenu(false);
+                      openAuthModal('login');
+                    }}
+                    className="w-full flex items-center gap-2 px-2.5 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 rounded-lg transition-colors"
                   >
-                    <ShieldCheck className="w-3.5 h-3.5" />
-                    Admin
+                    <LogIn className="w-4 h-4 text-slate-400" />
+                    Cambiar de cuenta
                   </button>
+
                   <button
-                    onClick={() => switchRole('usuario')}
-                    className={`flex items-center justify-center gap-1.5 py-1.5 text-xs font-semibold rounded-lg transition-all ${
-                      !isAdmin ? 'bg-white text-indigo-700 shadow-xs' : 'text-slate-600 hover:text-slate-900'
-                    }`}
+                    onClick={() => {
+                      setShowProfileMenu(false);
+                      logout();
+                    }}
+                    className="w-full flex items-center gap-2 px-2.5 py-2 text-xs font-medium text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
                   >
-                    <User className="w-3.5 h-3.5" />
-                    Usuario
+                    <LogOut className="w-4 h-4" />
+                    Cerrar Sesión
                   </button>
                 </div>
               </div>
-
-              {/* Iniciar con Google / Salir */}
-              <div className="border-t border-slate-100 pt-2 space-y-1">
-                <button
-                  onClick={loginWithGoogle}
-                  className="w-full flex items-center gap-2 px-2.5 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 rounded-lg transition-colors"
-                >
-                  <svg className="w-4 h-4" viewBox="0 0 24 24">
-                    <path
-                      fill="#4285F4"
-                      d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.66-5.17 3.66-9.17z"
-                    />
-                    <path
-                      fill="#34A853"
-                      d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.36 24 12 24z"
-                    />
-                    <path
-                      fill="#FBBC05"
-                      d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.17 0 9.97 0 12s.45 3.83 1.25 5.42l4.03-3.15z"
-                    />
-                    <path
-                      fill="#EA4335"
-                      d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.36 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"
-                    />
-                  </svg>
-                  Conectar cuenta de Google
-                </button>
-
-                <button
-                  onClick={logout}
-                  className="w-full flex items-center gap-2 px-2.5 py-2 text-xs font-medium text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
-                >
-                  <LogOut className="w-4 h-4" />
-                  Cerrar Sesión
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
+            )}
+          </div>
+        )}
       </div>
     </header>
   );

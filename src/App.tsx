@@ -17,6 +17,7 @@ import { SpaceModal } from './components/spaces/SpaceModal';
 import { PersonModal } from './components/people/PersonModal';
 import { SimulatedEmailModal } from './components/requests/SimulatedEmailModal';
 import { UserManagementView } from './components/users/UserManagementView';
+import { AuthModal } from './components/auth/AuthModal';
 import { EventEntity, Space, Person, ParticipationRequest } from './types';
 import confetti from 'canvas-confetti';
 
@@ -326,6 +327,9 @@ const MainApp: React.FC = () => {
           await respondToParticipationRequest(tok, st, n);
         }}
       />
+
+      {/* Modal de Autenticación (Email / Contraseña y Registro) */}
+      <AuthModal />
     </div>
   );
 };
