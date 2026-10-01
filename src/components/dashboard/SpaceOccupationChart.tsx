@@ -16,6 +16,7 @@ import {
   MapPin,
   Laptop,
 } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
 
 interface SpaceOccupationChartProps {
   spaces: Space[];
@@ -34,6 +35,7 @@ export const SpaceOccupationChart: React.FC<SpaceOccupationChartProps> = ({
   onSelectEvent,
   onSelectSpaceTimeSlot,
 }) => {
+  const { canEdit } = useAuth();
   const [viewMode, setViewMode] = useState<ViewMode>('cards');
   const [searchFilter, setSearchFilter] = useState('');
   const [typeFilter, setTypeFilter] = useState('todos');
@@ -329,20 +331,22 @@ export const SpaceOccupationChart: React.FC<SpaceOccupationChartProps> = ({
                   </div>
                 </div>
 
-                {/* Pie de Tarjeta con Botón de Reserva Rápida */}
+                {/* Pie de Tarjeta con Botón de Reserva Rápida (Solo si canEdit) */}
                 <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
                   <div className="flex items-center gap-1 text-[11px] text-slate-400">
                     <Clock className="w-3 h-3" />
                     <span>07:00 a 20:00</span>
                   </div>
 
-                  <button
-                    onClick={() => onSelectSpaceTimeSlot(space.id, '08:00')}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-emerald-700 text-white text-xs font-semibold shadow-xs transition-colors"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>Reservar sala</span>
-                  </button>
+                  {canEdit && (
+                    <button
+                      onClick={() => onSelectSpaceTimeSlot(space.id, '08:00')}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-emerald-700 text-white text-xs font-semibold shadow-xs transition-colors"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Reservar sala</span>
+                    </button>
+                  )}
                 </div>
               </div>
             );
@@ -409,19 +413,23 @@ export const SpaceOccupationChart: React.FC<SpaceOccupationChartProps> = ({
                       key={space.id}
                       className="relative border-r border-slate-200/80 divide-y divide-slate-100 h-full"
                     >
-                      {/* Celdas de fondo por cada hora (clic para reservar) */}
+                      {/* Celdas de fondo por cada hora (clic para reservar solo si canEdit) */}
                       {hours.map((h) => {
                         const hourStr = `${String(h).padStart(2, '0')}:00`;
                         return (
                           <div
                             key={h}
-                            onClick={() => onSelectSpaceTimeSlot(space.id, hourStr)}
-                            className="h-14 hover:bg-emerald-50/40 cursor-pointer transition-colors group flex items-center justify-center"
-                            title={`Hacer clic para reservar ${space.name} a las ${hourStr}`}
+                            onClick={canEdit ? () => onSelectSpaceTimeSlot(space.id, hourStr) : undefined}
+                            className={`h-14 transition-colors group flex items-center justify-center ${
+                              canEdit ? 'hover:bg-emerald-50/40 cursor-pointer' : 'cursor-default'
+                            }`}
+                            title={canEdit ? `Hacer clic para reservar ${space.name} a las ${hourStr}` : undefined}
                           >
-                            <span className="text-[10px] font-medium text-emerald-700 opacity-0 group-hover:opacity-100 transition-opacity">
-                              + Reservar
-                            </span>
+                            {canEdit && (
+                              <span className="text-[10px] font-medium text-emerald-700 opacity-0 group-hover:opacity-100 transition-opacity">
+                                + Reservar
+                              </span>
+                            )}
                           </div>
                         );
                       })}
@@ -535,9 +543,11 @@ export const SpaceOccupationChart: React.FC<SpaceOccupationChartProps> = ({
                         return (
                           <div
                             key={h}
-                            onClick={() => onSelectSpaceTimeSlot(space.id, hourStr)}
-                            title={`Reservar ${space.name} a las ${hourStr}`}
-                            className="flex-1 h-full border-r border-slate-200/40 hover:bg-emerald-50/50 cursor-pointer transition-colors"
+                            onClick={canEdit ? () => onSelectSpaceTimeSlot(space.id, hourStr) : undefined}
+                            title={canEdit ? `Reservar ${space.name} a las ${hourStr}` : undefined}
+                            className={`flex-1 h-full border-r border-slate-200/40 transition-colors ${
+                              canEdit ? 'hover:bg-emerald-50/50 cursor-pointer' : 'cursor-default'
+                            }`}
                           />
                         );
                       })}

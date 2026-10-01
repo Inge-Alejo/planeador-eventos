@@ -44,7 +44,7 @@ export const EventDetailDrawer: React.FC<EventDetailDrawerProps> = ({
   auditLogs,
   onOpenSimulatedEmail,
 }) => {
-  const { isAdmin } = useAuth();
+  const { canEdit } = useAuth();
   const { contentRef, handleBackdropClick } = useDismissable({
     onDismiss: onClose,
     isOpen: Boolean(event),
@@ -103,7 +103,7 @@ export const EventDetailDrawer: React.FC<EventDetailDrawerProps> = ({
             </span>
           </div>
           <div className="flex items-center gap-1">
-            {isAdmin && (
+            {canEdit && (
               <>
                 <button
                   onClick={() => onEdit(event)}

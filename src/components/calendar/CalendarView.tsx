@@ -130,34 +130,75 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
       });
     }
 
-    // Completar hasta múltiplo de 7 (35 o 42 días)
-    const remaining = (7 - (days.length % 7)) % 7;
-    for (let i = 1; i <= remaining; i++) {
+    // Completar hasta cuadrícula de semanas completas (mínimo 35 días, o 42 si excede 35)
+    let nextDayCount = 1;
+    while (days.length % 7 !== 0 || days.length < 35) {
       const nextM = currentMonth === 12 ? 1 : currentMonth + 1;
       const nextY = currentMonth === 12 ? currentYear + 1 : currentYear;
       days.push({
-        dateStr: `${nextY}-${String(nextM).padStart(2, '0')}-${String(i).padStart(2, '0')}`,
-        dayNumber: i,
+        dateStr: `${nextY}-${String(nextM).padStart(2, '0')}-${String(nextDayCount).padStart(2, '0')}`,
+        dayNumber: nextDayCount,
         isCurrentMonth: false,
       });
+      nextDayCount++;
     }
 
     return days;
   }, [currentYear, currentMonth]);
 
+  // Cálculo de los 7 días de la semana para la vista de Semana
+  const weekDays = useMemo(() => {
+    const current = new Date(currentYear, currentMonth - 1, currentDay);
+    const dayOfWeek = current.getDay(); // 0 = Domingo
+    const diffToMonday = (dayOfWeek + 6) % 7; // Lunes = 0
+    const monday = new Date(currentYear, currentMonth - 1, currentDay - diffToMonday);
+
+    const days: { dateStr: string; dayNumber: number; dayName: string; isToday: boolean }[] = [];
+    const dayNames = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
+
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + i);
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const dayNum = String(d.getDate()).padStart(2, '0');
+      const dateStr = `${y}-${m}-${dayNum}`;
+
+      days.push({
+        dateStr,
+        dayNumber: d.getDate(),
+        dayName: dayNames[i],
+        isToday: dateStr === getBogotaToday(),
+      });
+    }
+
+    return days;
+  }, [currentYear, currentMonth, currentDay]);
+
   // Formato del título superior
   const currentTitle = useMemo(() => {
     const d = new Date(currentYear, currentMonth - 1, currentDay);
-    return new Intl.DateTimeFormat('es-CO', {
-      month: 'long',
-      year: 'numeric',
-    }).format(d);
-  }, [currentYear, currentMonth, currentDay]);
-
-  const getSpaceColor = (spaceId: string) => {
-    const space = spaces.find((s) => s.id === spaceId);
-    return space?.color || '#4F46E5';
-  };
+    if (viewMode === 'mes') {
+      return new Intl.DateTimeFormat('es-CO', {
+        month: 'long',
+        year: 'numeric',
+      }).format(d);
+    }
+    if (viewMode === 'semana') {
+      const start = weekDays[0];
+      const end = weekDays[6];
+      const monthName = new Intl.DateTimeFormat('es-CO', { month: 'short' }).format(d);
+      return `Semana: ${start.dayNumber} - ${end.dayNumber} de ${monthName}. ${d.getFullYear()}`;
+    }
+    if (viewMode === 'dia') {
+      return new Intl.DateTimeFormat('es-CO', {
+        weekday: 'long',
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+      }).format(d);
+    }
+    return `Agenda de ${new Intl.DateTimeFormat('es-CO', { month: 'long', year: 'numeric' }).format(d)}`;
+  }, [currentYear, currentMonth, currentDay, viewMode, weekDays]);
 
   return (
     <div className="flex flex-col h-full space-y-4">
@@ -193,7 +234,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
           </h2>
         </div>
 
-        {/* Filtros Rápidos */}
+        {/* Filtros Rápidos y Botones de Acción */}
         <div className="flex flex-wrap items-center gap-2">
           {/* Selector de Espacio */}
           <select
@@ -293,216 +334,238 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
               <span className="hidden sm:inline">Agenda</span>
             </button>
           </div>
+
+          {/* Botón "+ Nuevo Evento" (Visible SOLO si canEdit) */}
+          {canEdit && (
+            <button
+              onClick={() => onOpenCreateEvent()}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-xs active:scale-95 transition-all ml-1"
+              title="Programar nuevo evento institucional"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Nuevo Evento</span>
+            </button>
+          )}
         </div>
       </div>
 
-      {/* VISTA 1: MES */}
+      {/* VISTA 1: MES (Completo, responsivo y sin recortes) */}
       {viewMode === 'mes' && (
         <div className="rounded-2xl border border-slate-200/80 bg-white shadow-xs overflow-hidden flex flex-col flex-1">
-          {/* Cabecera de días de la semana */}
-          <div className="grid grid-cols-7 border-b border-slate-200 bg-slate-50/70 text-center text-xs font-bold text-slate-600 py-2.5">
-            <div>Lun</div>
-            <div>Mar</div>
-            <div>Mié</div>
-            <div>Jue</div>
-            <div>Vie</div>
-            <div className="text-indigo-600">Sáb</div>
-            <div className="text-rose-500">Dom</div>
-          </div>
-
-          {/* Cuadrícula de 7 columnas */}
-          <div className="grid grid-cols-7 auto-rows-fr divide-x divide-y divide-slate-100 flex-1">
-            {monthDays.map((d, idx) => {
-              const dayEvents = filteredEvents.filter((e) => e.date === d.dateStr);
-              const isToday = d.dateStr === getBogotaToday();
-
-              return (
-                <div
-                  key={idx}
-                  onClick={canEdit ? () => onOpenCreateEvent({ date: d.dateStr }) : undefined}
-                  className={`min-h-[110px] sm:min-h-[130px] p-1.5 sm:p-2 flex flex-col justify-between transition-colors ${
-                    canEdit ? 'hover:bg-indigo-50/20 cursor-pointer' : 'cursor-default'
-                  } ${!d.isCurrentMonth ? 'bg-slate-50/40 text-slate-300' : 'bg-white'}`}
-                >
-                  <div className="flex items-center justify-between">
-                    <span
-                      className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold ${
-                        isToday
-                          ? 'bg-indigo-600 text-white shadow-sm'
-                          : d.isCurrentMonth
-                          ? 'text-slate-700'
-                          : 'text-slate-400'
-                      }`}
-                    >
-                      {d.dayNumber}
-                    </span>
-                    {dayEvents.length > 0 && (
-                      <span className="text-[10px] font-bold text-slate-400">
-                        {dayEvents.length} act.
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Lista de eventos del día con color por tipo de evento */}
-                  <div className="mt-1 space-y-1 overflow-hidden flex-1">
-                    {dayEvents.slice(0, 3).map((evt) => {
-                      const typeConfig = getEventTypeConfig(evt.type);
-                      return (
-                        <div
-                          key={evt.id}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onSelectEvent(evt.id);
-                          }}
-                          style={{ borderLeftColor: typeConfig.color }}
-                          className="group rounded-md border-l-4 bg-slate-50 hover:bg-slate-100 p-1 text-[11px] shadow-2xs transition-all hover:scale-[1.01] cursor-pointer"
-                        >
-                          <div className="flex items-center justify-between text-[10px] font-semibold text-slate-500">
-                            <div className="flex items-center gap-1 truncate">
-                              <span
-                                className="h-1.5 w-1.5 rounded-full shrink-0"
-                                style={{ backgroundColor: typeConfig.color }}
-                              />
-                              <span>{evt.startTime}</span>
-                            </div>
-                            <span className="truncate max-w-[55px] text-slate-400 hidden sm:inline text-[9px]">
-                              {evt.spaceName}
-                            </span>
-                          </div>
-                          <p className="font-bold text-slate-800 truncate leading-tight group-hover:text-indigo-600 mt-0.5">
-                            {evt.title}
-                          </p>
-                          <div className="flex items-center gap-1 mt-0.5">
-                            <span
-                              className="text-[9px] font-semibold px-1 rounded truncate leading-tight"
-                              style={{
-                                color: typeConfig.color,
-                                backgroundColor: `${typeConfig.color}15`,
-                              }}
-                            >
-                              {typeConfig.label}
-                            </span>
-                            {evt.isVirtual && (
-                              <span className="text-[9px] font-bold px-1 rounded bg-cyan-100 text-cyan-800 leading-tight">
-                                Virtual
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
-                    {dayEvents.length > 3 && (
-                      <div className="text-[10px] font-bold text-indigo-600 text-center pt-0.5">
-                        +{dayEvents.length - 3} más
-                      </div>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* VISTA 2: AGENDA / LISTADO */}
-      {viewMode === 'agenda' && (
-        <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-xs">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-            <h3 className="text-sm font-bold text-slate-900">Listado Cronológico de Actividades</h3>
-            <span className="text-xs text-slate-500 font-medium">
-              {filteredEvents.length} eventos filtrados
-            </span>
-          </div>
-
-          <div className="mt-4 divide-y divide-slate-100">
-            {filteredEvents.length === 0 ? (
-              <div className="py-12 text-center text-xs text-slate-400">
-                No se encontraron actividades con los filtros actuales.
+          <div className="overflow-x-auto min-w-full">
+            <div className="min-w-[700px] flex flex-col flex-1">
+              {/* Cabecera de días de la semana */}
+              <div className="grid grid-cols-7 border-b border-slate-200 bg-slate-50/70 text-center text-xs font-bold text-slate-600 py-2.5">
+                <div>Lun</div>
+                <div>Mar</div>
+                <div>Mié</div>
+                <div>Jue</div>
+                <div>Vie</div>
+                <div className="text-indigo-600">Sáb</div>
+                <div className="text-rose-500">Dom</div>
               </div>
-            ) : (
-              filteredEvents
-                .sort((a, b) => `${a.date} ${a.startTime}`.localeCompare(`${b.date} ${b.startTime}`))
-                .map((evt) => {
-                  const typeConfig = getEventTypeConfig(evt.type);
+
+              {/* Cuadrícula de 7 columnas */}
+              <div className="grid grid-cols-7 auto-rows-fr divide-x divide-y divide-slate-100 flex-1">
+                {monthDays.map((d, idx) => {
+                  const dayEvents = filteredEvents.filter((e) => e.date === d.dateStr);
+                  const isToday = d.dateStr === getBogotaToday();
+
                   return (
                     <div
-                      key={evt.id}
-                      onClick={() => onSelectEvent(evt.id)}
-                      className="py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-slate-50 p-3 rounded-xl transition-all cursor-pointer"
+                      key={idx}
+                      onClick={canEdit ? () => onOpenCreateEvent({ date: d.dateStr }) : undefined}
+                      className={`min-h-[115px] sm:min-h-[135px] p-1.5 sm:p-2 flex flex-col justify-between transition-colors ${
+                        canEdit ? 'hover:bg-indigo-50/20 cursor-pointer' : 'cursor-default'
+                      } ${!d.isCurrentMonth ? 'bg-slate-50/40 text-slate-300' : 'bg-white'}`}
                     >
-                      <div className="flex items-start gap-4">
-                        {/* Fecha */}
-                        <div className="flex flex-col items-center justify-center h-12 w-14 rounded-xl bg-indigo-50 border border-indigo-100 text-indigo-700 shrink-0">
-                          <span className="text-[10px] font-bold uppercase">{evt.date.split('-')[1]}</span>
-                          <span className="text-lg font-black leading-none">{evt.date.split('-')[2]}</span>
-                        </div>
-
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <span
-                              className="h-2.5 w-2.5 rounded-full shrink-0 shadow-2xs"
-                              style={{ backgroundColor: typeConfig.color }}
-                            />
-                            <h4 className="text-sm font-bold text-slate-900 hover:text-indigo-600 transition-colors">
-                              {evt.title}
-                            </h4>
-                            <span
-                              className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold border"
-                              style={{
-                                backgroundColor: `${typeConfig.color}15`,
-                                borderColor: `${typeConfig.color}40`,
-                                color: typeConfig.color,
-                              }}
-                            >
-                              {typeConfig.label}
-                            </span>
-                            {evt.isVirtual && (
-                              <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-cyan-50 text-cyan-700 border border-cyan-200">
-                                Virtual
-                              </span>
-                            )}
-                          </div>
-
-                          <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500">
-                            <span className="flex items-center gap-1 font-mono">
-                              <Clock className="w-3.5 h-3.5 text-slate-400" />
-                              {format12Hour(evt.startTime)} – {format12Hour(evt.endTime)} ({evt.durationMinutes} min)
-                            </span>
-                            <span className="flex items-center gap-1">
-                              <MapPin className="w-3.5 h-3.5 text-slate-400" />
-                              {evt.spaceName}
-                            </span>
-                            <span className="flex items-center gap-1">
-                              <User className="w-3.5 h-3.5 text-slate-400" />
-                              {evt.responsibleName}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="self-end sm:self-center">
+                      <div className="flex items-center justify-between">
                         <span
-                          className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
-                            evt.status === 'confirmado'
-                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                              : evt.status === 'pendiente_confirmacion'
-                              ? 'bg-purple-50 text-purple-700 border border-purple-200'
-                              : 'bg-indigo-50 text-indigo-700 border border-indigo-200'
+                          className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold ${
+                            isToday
+                              ? 'bg-indigo-600 text-white shadow-sm'
+                              : d.isCurrentMonth
+                              ? 'text-slate-700'
+                              : 'text-slate-400'
                           }`}
                         >
-                          {evt.status.replace('_', ' ')}
+                          {d.dayNumber}
                         </span>
+                        {dayEvents.length > 0 && (
+                          <span className="text-[10px] font-bold text-slate-400">
+                            {dayEvents.length} act.
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Lista de eventos del día */}
+                      <div className="mt-1 space-y-1 overflow-hidden flex-1">
+                        {dayEvents.slice(0, 3).map((evt) => {
+                          const typeConfig = getEventTypeConfig(evt.type);
+                          return (
+                            <div
+                              key={evt.id}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onSelectEvent(evt.id);
+                              }}
+                              style={{ borderLeftColor: typeConfig.color }}
+                              className="group rounded-md border-l-4 bg-slate-50 hover:bg-slate-100 p-1 text-[11px] shadow-2xs transition-all hover:scale-[1.01] cursor-pointer"
+                            >
+                              <div className="flex items-center justify-between text-[10px] font-semibold text-slate-500">
+                                <div className="flex items-center gap-1 truncate">
+                                  <span
+                                    className="h-1.5 w-1.5 rounded-full shrink-0"
+                                    style={{ backgroundColor: typeConfig.color }}
+                                  />
+                                  <span>{evt.startTime}</span>
+                                </div>
+                                <span className="truncate max-w-[55px] text-slate-400 hidden sm:inline text-[9px]">
+                                  {evt.spaceName}
+                                </span>
+                              </div>
+                              <p className="font-bold text-slate-800 truncate leading-tight group-hover:text-indigo-600 mt-0.5">
+                                {evt.title}
+                              </p>
+                              <div className="flex items-center gap-1 mt-0.5">
+                                <span
+                                  className="text-[9px] font-semibold px-1 rounded truncate leading-tight"
+                                  style={{
+                                    color: typeConfig.color,
+                                    backgroundColor: `${typeConfig.color}15`,
+                                  }}
+                                >
+                                  {typeConfig.label}
+                                </span>
+                                {evt.isVirtual && (
+                                  <span className="text-[9px] font-bold px-1 rounded bg-cyan-100 text-cyan-800 leading-tight">
+                                    Virtual
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                        {dayEvents.length > 3 && (
+                          <div className="text-[10px] font-bold text-indigo-600 text-center pt-0.5">
+                            +{dayEvents.length - 3} más
+                          </div>
+                        )}
                       </div>
                     </div>
                   );
-                })
-            )}
+                })}
+              </div>
+            </div>
           </div>
         </div>
       )}
 
-      {/* VISTA 3: DÍA / SEMANA */}
-      {(viewMode === 'dia' || viewMode === 'semana') && (
+      {/* VISTA 2: SEMANA (7 Días completos desplegados en columnas) */}
+      {viewMode === 'semana' && (
+        <div className="rounded-2xl border border-slate-200/80 bg-white shadow-xs overflow-hidden flex flex-col flex-1">
+          <div className="overflow-x-auto min-w-full">
+            <div className="min-w-[780px]">
+              {/* Cabecera de 7 días de la semana */}
+              <div className="grid grid-cols-7 border-b border-slate-200 bg-slate-50/80 text-center py-3">
+                {weekDays.map((wd) => (
+                  <div key={wd.dateStr} className="flex flex-col items-center justify-center">
+                    <span className="text-[11px] font-bold uppercase text-slate-500">{wd.dayName}</span>
+                    <span
+                      className={`mt-1 flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold ${
+                        wd.isToday
+                          ? 'bg-indigo-600 text-white shadow-sm ring-2 ring-indigo-200'
+                          : 'text-slate-800'
+                      }`}
+                    >
+                      {wd.dayNumber}
+                    </span>
+                  </div>
+                ))}
+              </div>
+
+              {/* Columnas con eventos de cada día de la semana */}
+              <div className="grid grid-cols-7 divide-x divide-slate-100 min-h-[420px]">
+                {weekDays.map((wd) => {
+                  const dayEvents = filteredEvents
+                    .filter((e) => e.date === wd.dateStr)
+                    .sort((a, b) => a.startTime.localeCompare(b.startTime));
+
+                  return (
+                    <div
+                      key={wd.dateStr}
+                      className={`p-2 flex flex-col justify-between transition-colors ${
+                        wd.isToday ? 'bg-indigo-50/20' : 'bg-white'
+                      }`}
+                    >
+                      <div className="space-y-2 flex-1">
+                        {dayEvents.length === 0 ? (
+                          <div className="h-full flex flex-col items-center justify-center py-10 text-center text-[11px] text-slate-300">
+                            <span>Sin actividades</span>
+                          </div>
+                        ) : (
+                          dayEvents.map((evt) => {
+                            const typeConfig = getEventTypeConfig(evt.type);
+                            return (
+                              <div
+                                key={evt.id}
+                                onClick={() => onSelectEvent(evt.id)}
+                                style={{ borderLeftColor: typeConfig.color }}
+                                className="group rounded-lg border-l-4 bg-slate-50 hover:bg-slate-100 p-2 text-xs shadow-2xs transition-all hover:scale-[1.01] cursor-pointer"
+                              >
+                                <div className="flex items-center justify-between text-[10px] font-semibold text-slate-500 mb-0.5">
+                                  <span className="font-mono">{evt.startTime} - {evt.endTime}</span>
+                                </div>
+                                <p className="font-bold text-slate-900 group-hover:text-indigo-600 truncate leading-snug">
+                                  {evt.title}
+                                </p>
+                                <p className="text-[10px] text-slate-400 truncate mt-0.5">
+                                  {evt.spaceName}
+                                </p>
+                                <div className="mt-1 flex items-center gap-1">
+                                  <span
+                                    className="text-[9px] font-semibold px-1 rounded truncate leading-tight"
+                                    style={{
+                                      color: typeConfig.color,
+                                      backgroundColor: `${typeConfig.color}15`,
+                                    }}
+                                  >
+                                    {typeConfig.label}
+                                  </span>
+                                  {evt.isVirtual && (
+                                    <span className="text-[9px] font-bold px-1 rounded bg-cyan-100 text-cyan-800 leading-tight">
+                                      Virtual
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })
+                        )}
+                      </div>
+
+                      {/* Botón rápido para programar en este día (Solo si canEdit) */}
+                      {canEdit && (
+                        <button
+                          onClick={() => onOpenCreateEvent({ date: wd.dateStr })}
+                          className="mt-2 w-full flex items-center justify-center gap-1 py-1 rounded-lg border border-dashed border-slate-200 hover:border-indigo-400 hover:bg-indigo-50/50 text-[10px] font-bold text-slate-400 hover:text-indigo-700 transition-colors"
+                          title={`Programar actividad para el ${wd.dayName} ${wd.dayNumber}`}
+                        >
+                          <Plus className="w-3 h-3" />
+                          <span>Agregar</span>
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* VISTA 3: DÍA (Horario cronológico detallado) */}
+      {viewMode === 'dia' && (
         <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-xs">
           <div className="border-b border-slate-100 pb-3 flex items-center justify-between">
             <h3 className="text-sm font-bold text-slate-900">
@@ -578,7 +641,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
                           <p className="text-xs text-slate-500 mt-0.5">{evt.description}</p>
                           <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-slate-600">
                             <span className="flex items-center gap-1 font-semibold text-indigo-700">
-                              <MapPin className="w-3.5 h-3.5" />
+                              <MapPin className="w-3.5 h-3.5 text-indigo-500" />
                               {evt.spaceName}
                             </span>
                             <span className="flex items-center gap-1">
@@ -587,6 +650,106 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
                             </span>
                           </div>
                         </div>
+                      </div>
+                    </div>
+                  );
+                })
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* VISTA 4: AGENDA / LISTADO */}
+      {viewMode === 'agenda' && (
+        <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-xs">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+            <h3 className="text-sm font-bold text-slate-900">Listado Cronológico de Actividades</h3>
+            <span className="text-xs text-slate-500 font-medium">
+              {filteredEvents.length} eventos filtrados
+            </span>
+          </div>
+
+          <div className="mt-4 divide-y divide-slate-100">
+            {filteredEvents.length === 0 ? (
+              <div className="py-12 text-center text-xs text-slate-400">
+                No se encontraron actividades con los filtros actuales.
+              </div>
+            ) : (
+              filteredEvents
+                .sort((a, b) => {
+                  if (a.date !== b.date) return a.date.localeCompare(b.date);
+                  return a.startTime.localeCompare(b.startTime);
+                })
+                .map((evt) => {
+                  const typeConfig = getEventTypeConfig(evt.type);
+                  return (
+                    <div
+                      key={evt.id}
+                      onClick={() => onSelectEvent(evt.id)}
+                      className="py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-slate-50 p-3 rounded-xl transition-all cursor-pointer"
+                    >
+                      <div className="flex items-start gap-4">
+                        {/* Fecha */}
+                        <div className="flex flex-col items-center justify-center h-12 w-14 rounded-xl bg-indigo-50 border border-indigo-100 text-indigo-700 shrink-0">
+                          <span className="text-[10px] font-bold uppercase">{evt.date.split('-')[1]}</span>
+                          <span className="text-lg font-black leading-none">{evt.date.split('-')[2]}</span>
+                        </div>
+
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span
+                              className="h-2.5 w-2.5 rounded-full shrink-0 shadow-2xs"
+                              style={{ backgroundColor: typeConfig.color }}
+                            />
+                            <h4 className="text-sm font-bold text-slate-900 hover:text-indigo-600 transition-colors">
+                              {evt.title}
+                            </h4>
+                            <span
+                              className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold border"
+                              style={{
+                                backgroundColor: `${typeConfig.color}15`,
+                                borderColor: `${typeConfig.color}40`,
+                                color: typeConfig.color,
+                              }}
+                            >
+                              {typeConfig.label}
+                            </span>
+                            {evt.isVirtual && (
+                              <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-cyan-50 text-cyan-700 border border-cyan-200">
+                                Virtual
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500">
+                            <span className="flex items-center gap-1 font-mono">
+                              <Clock className="w-3.5 h-3.5 text-slate-400" />
+                              {format12Hour(evt.startTime)} – {format12Hour(evt.endTime)} ({evt.durationMinutes} min)
+                            </span>
+                            <span className="flex items-center gap-1">
+                              <MapPin className="w-3.5 h-3.5 text-slate-400" />
+                              {evt.spaceName}
+                            </span>
+                            <span className="flex items-center gap-1">
+                              <User className="w-3.5 h-3.5 text-slate-400" />
+                              {evt.responsibleName}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="self-end sm:self-center">
+                        <span
+                          className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
+                            evt.status === 'confirmado'
+                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                              : evt.status === 'pendiente_confirmacion'
+                              ? 'bg-purple-50 text-purple-700 border border-purple-200'
+                              : 'bg-indigo-50 text-indigo-700 border border-indigo-200'
+                          }`}
+                        >
+                          {evt.status.replace('_', ' ')}
+                        </span>
                       </div>
                     </div>
                   );

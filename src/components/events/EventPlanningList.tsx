@@ -245,7 +245,7 @@ export const EventPlanningList: React.FC<EventPlanningListProps> = ({
                           >
                             <ExternalLink className="w-3.5 h-3.5" />
                           </button>
-                          {isAdmin && (
+                          {canEdit && (
                             <>
                               <button
                                 onClick={() => onEditEvent(evt)}

@@ -27,12 +27,12 @@ service cloud.firestore {
       );
     }
 
-    // Verificar si el usuario tiene permisos de edición (Admin o Editor Aprobado)
+    // Verificar si el usuario tiene permisos de edición (Admin o Gestor/Editor Aprobado)
     function isEditorOrAdmin() {
       return isAdmin() || (
         isAuthenticated() && 
         exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
-        getUserData().role == 'editor' && 
+        (getUserData().role == 'gestor' || getUserData().role == 'editor' || getUserData().role == 'administrador') && 
         getUserData().status == 'aprobado'
       );
     }
