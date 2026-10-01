@@ -73,6 +73,16 @@ export function generateOutlookCalendarUrl(params: {
   return `https://outlook.live.com/calendar/0/deeplink/compose?path=/calendar/action/compose&rru=addevent&subject=${subject}&startdt=${startClean}&enddt=${endClean}&body=${body}&location=${location}`;
 }
 
+function escapeHtml(str?: string): string {
+  if (!str) return '';
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
 // Plantilla HTML Institucional UdeA
 export function generateInvitationHtml(params: {
   personName: string;
@@ -86,8 +96,16 @@ export function generateInvitationHtml(params: {
   baseUrl?: string;
 }): string {
   const origin = params.baseUrl || (typeof window !== 'undefined' ? window.location.origin : 'https://planeador-eventos.vercel.app');
-  const confirmUrl = `${origin}?token=${params.token}&action=confirmada`;
-  const rejectUrl = `${origin}?token=${params.token}&action=rechazada`;
+  const confirmUrl = `${origin}?token=${encodeURIComponent(params.token)}&action=confirmada`;
+  const rejectUrl = `${origin}?token=${encodeURIComponent(params.token)}&action=rechazada`;
+
+  const safePersonName = escapeHtml(params.personName);
+  const safeEventTitle = escapeHtml(params.eventTitle);
+  const safeSpaceName = escapeHtml(params.spaceName);
+  const safeDescription = escapeHtml(params.description);
+  const safeDate = escapeHtml(params.eventDate);
+  const safeStartTime = escapeHtml(params.eventStartTime);
+  const safeEndTime = escapeHtml(params.eventEndTime);
 
   const googleCalUrl = generateGoogleCalendarUrl({
     title: params.eventTitle,
@@ -142,7 +160,7 @@ export function generateInvitationHtml(params: {
           <tr>
             <td style="padding: 35px 30px;">
               <p style="font-size: 15px; line-height: 1.6; margin-top: 0; color: #334155;">
-                Estimado(a) <strong>${params.personName}</strong>,
+                Estimado(a) <strong>${safePersonName}</strong>,
               </p>
               <p style="font-size: 14px; line-height: 1.6; color: #475569;">
                 Ha sido convocado(a) formalmente para participar en la siguiente actividad académica / institucional:
@@ -153,36 +171,36 @@ export function generateInvitationHtml(params: {
                 <tr>
                   <td style="padding-bottom: 14px;">
                     <span style="font-size: 11px; font-weight: bold; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px;">Actividad:</span>
-                    <div style="font-size: 16px; font-weight: 700; color: #0f172a; margin-top: 2px;">${params.eventTitle}</div>
+                    <div style="font-size: 16px; font-weight: 700; color: #0f172a; margin-top: 2px;">${safeEventTitle}</div>
                   </td>
                 </tr>
                 <tr>
                   <td style="padding-bottom: 14px;">
                     <table width="100%" cellspacing="0" cellpadding="0">
-                      <tr>
+                       <tr>
                         <td width="50%">
                           <span style="font-size: 11px; font-weight: bold; color: #64748b; text-transform: uppercase;">📅 Fecha:</span>
-                          <div style="font-size: 13px; font-weight: 600; color: #1e293b; margin-top: 2px;">${params.eventDate}</div>
+                          <div style="font-size: 13px; font-weight: 600; color: #1e293b; margin-top: 2px;">${safeDate}</div>
                         </td>
                         <td width="50%">
                           <span style="font-size: 11px; font-weight: bold; color: #64748b; text-transform: uppercase;">⏰ Horario:</span>
-                          <div style="font-size: 13px; font-weight: 600; color: #1e293b; margin-top: 2px;">${params.eventStartTime} - ${params.eventEndTime}</div>
+                          <div style="font-size: 13px; font-weight: 600; color: #1e293b; margin-top: 2px;">${safeStartTime} - ${safeEndTime}</div>
                         </td>
                       </tr>
                     </table>
                   </td>
                 </tr>
                 <tr>
-                  <td style="padding-bottom: ${params.description ? '14px' : '0'};">
+                  <td style="padding-bottom: ${safeDescription ? '14px' : '0'};">
                     <span style="font-size: 11px; font-weight: bold; color: #64748b; text-transform: uppercase;">📍 Espacio / Ubicación:</span>
-                    <div style="font-size: 13px; font-weight: 600; color: #4338ca; margin-top: 2px;">${params.spaceName}</div>
+                    <div style="font-size: 13px; font-weight: 600; color: #4338ca; margin-top: 2px;">${safeSpaceName}</div>
                   </td>
                 </tr>
-                ${params.description ? `
+                ${safeDescription ? `
                 <tr>
                   <td>
                     <span style="font-size: 11px; font-weight: bold; color: #64748b; text-transform: uppercase;">📝 Descripción:</span>
-                    <div style="font-size: 12px; color: #475569; margin-top: 2px; line-height: 1.5;">${params.description}</div>
+                    <div style="font-size: 12px; color: #475569; margin-top: 2px; line-height: 1.5;">${safeDescription}</div>
                   </td>
                 </tr>
                 ` : ''}
