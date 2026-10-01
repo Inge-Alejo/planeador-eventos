@@ -30,6 +30,7 @@ export interface Space {
   notes?: string;
   color: string; // Hex color for calendar representation
   createdAt: string;
+  isVirtual?: boolean;
 }
 
 export interface Person {
@@ -117,6 +118,7 @@ export interface EventEntity {
   attendeesCount: number;
   notes?: string;
   peopleIds: string[];
+  isVirtual?: boolean;
   createdBy: {
     uid: string;
     name: string;

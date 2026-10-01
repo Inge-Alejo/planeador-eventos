@@ -45,6 +45,18 @@ const STORAGE_KEYS = {
 // Semilla inicial de espacios empresariales
 const initialSpaces: Space[] = [
   {
+    id: 'space-virtual',
+    name: 'Espacio Virtual / Teams / Meet / Zoom',
+    type: 'otro',
+    location: 'En Línea / Plataforma Virtual',
+    capacity: 1000,
+    equipment: ['Microsoft Teams', 'Google Meet', 'Zoom Rooms', 'OBS Streaming'],
+    status: 'activo',
+    color: '#06B6D4', // Cyan
+    isVirtual: true,
+    createdAt: new Date().toISOString(),
+  },
+  {
     id: 'space-1',
     name: 'Auditorio Mayor',
     type: 'auditorio',
@@ -1335,6 +1347,12 @@ export async function createParticipationRequest(
       } catch (e) {
         console.warn('Error guardando notif en Firestore:', e);
       }
+
+      // Enviar correo automático mediante Brevo en segundo plano
+      sendParticipationEmail(newReq).catch((err) => {
+        console.warn('Envío de correo automático Brevo en segundo plano:', err);
+      });
+
       return newReq;
     } catch (err) {
       console.error('Error guardando solicitud en Firestore:', err);

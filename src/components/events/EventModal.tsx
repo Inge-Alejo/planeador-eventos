@@ -51,6 +51,7 @@ export const EventModal: React.FC<EventModalProps> = ({
   const [attendeesCount, setAttendeesCount] = useState<number>(10);
   const [selectedPeopleIds, setSelectedPeopleIds] = useState<string[]>([]);
   const [status, setStatus] = useState<EventStatus>('programado');
+  const [isVirtual, setIsVirtual] = useState<boolean>(false);
   const [notes, setNotes] = useState('');
   const [sendParticipationEmails, setSendParticipationEmails] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -83,6 +84,7 @@ export const EventModal: React.FC<EventModalProps> = ({
       setAttendeesCount(eventToEdit.attendeesCount || 0);
       setSelectedPeopleIds(eventToEdit.peopleIds || []);
       setStatus(eventToEdit.status);
+      setIsVirtual(Boolean(eventToEdit.isVirtual));
       setNotes(eventToEdit.notes || '');
     } else {
       // Valores por defecto o preset
@@ -94,7 +96,10 @@ export const EventModal: React.FC<EventModalProps> = ({
       const [h, m] = (initialPreset?.time || '08:00').split(':').map(Number);
       const endH = String(Math.min(23, h + 2)).padStart(2, '0');
       setEndTime(`${endH}:${String(m).padStart(2, '0')}`);
-      setSpaceId(initialPreset?.spaceId || (spaces[0]?.id || ''));
+      const defaultSpaceId = initialPreset?.spaceId || (spaces[0]?.id || '');
+      setSpaceId(defaultSpaceId);
+      const sp = spaces.find((s) => s.id === defaultSpaceId);
+      setIsVirtual(Boolean(sp?.isVirtual || (sp?.name || '').toLowerCase().includes('virtual')));
       setResponsibleId(people[0]?.id || '');
       setAttendeesCount(15);
       setSelectedPeopleIds([]);
@@ -120,6 +125,7 @@ export const EventModal: React.FC<EventModalProps> = ({
       spaceId,
       peopleIds: selectedPeopleIds,
       attendeesCount,
+      isVirtual,
       spaces,
       people,
       existingEvents,
@@ -132,6 +138,7 @@ export const EventModal: React.FC<EventModalProps> = ({
     spaceId,
     selectedPeopleIds,
     attendeesCount,
+    isVirtual,
     spaces,
     people,
     existingEvents,
@@ -177,6 +184,7 @@ export const EventModal: React.FC<EventModalProps> = ({
         responsibleId,
         responsibleName: targetResp ? `${targetResp.firstName} ${targetResp.lastName}` : 'Sin Asignar',
         attendeesCount: Number(attendeesCount) || 0,
+        isVirtual: Boolean(isVirtual),
         notes: notes.trim(),
         peopleIds: selectedPeopleIds,
         createdBy: { uid: 'user', name: 'Usuario', email: 'user@empresa.com' },
@@ -359,13 +367,20 @@ export const EventModal: React.FC<EventModalProps> = ({
               </label>
               <select
                 value={spaceId}
-                onChange={(e) => setSpaceId(e.target.value)}
+                onChange={(e) => {
+                  const newSpaceId = e.target.value;
+                  setSpaceId(newSpaceId);
+                  const target = spaces.find((s) => s.id === newSpaceId);
+                  if (target?.isVirtual || (target?.name || '').toLowerCase().includes('virtual')) {
+                    setIsVirtual(true);
+                  }
+                }}
                 className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
               >
                 <option value="">Selecciona un espacio...</option>
                 {spaces.map((s) => (
                   <option key={s.id} value={s.id}>
-                    {s.name} (Capacidad: {s.capacity} personas)
+                    {s.name} {s.isVirtual ? '(Plataforma Virtual)' : `(Capacidad: ${s.capacity} personas)`}
                   </option>
                 ))}
               </select>
@@ -379,6 +394,33 @@ export const EventModal: React.FC<EventModalProps> = ({
                 onChange={(e) => setAttendeesCount(Number(e.target.value))}
                 className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-800 focus:border-indigo-500 focus:outline-none"
               />
+            </div>
+
+            {/* Modalidad: Virtual vs Presencial */}
+            <div className="sm:col-span-3 p-3 rounded-xl bg-slate-50 border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="isVirtualCheckbox"
+                  checked={isVirtual}
+                  onChange={(e) => setIsVirtual(e.target.checked)}
+                  className="rounded border-slate-300 text-cyan-600 focus:ring-cyan-500 h-4 w-4"
+                />
+                <label htmlFor="isVirtualCheckbox" className="text-xs font-bold text-slate-800 cursor-pointer">
+                  Modalidad Virtual / En Línea (Teams, Meet, Zoom)
+                </label>
+              </div>
+              <span
+                className={`text-[11px] font-semibold px-2.5 py-0.5 rounded-full ${
+                  isVirtual
+                    ? 'bg-cyan-100 text-cyan-800 border border-cyan-200'
+                    : 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                }`}
+              >
+                {isVirtual
+                  ? '✓ Permite eventos simultáneos a la misma hora'
+                  : '🔒 Requiere presencialidad exclusiva (Bloquea cruces)'}
+              </span>
             </div>
           </div>
 

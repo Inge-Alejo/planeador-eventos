@@ -58,11 +58,19 @@ export const LoginScreen: React.FC = () => {
       if (code === 'auth/invalid-credential' || code === 'auth/wrong-password' || code === 'auth/user-not-found') {
         setError('Credenciales incorrectas. Verifica tu correo y contraseña.');
       } else if (code === 'auth/email-already-in-use') {
-        setError('Este correo electrónico ya tiene una cuenta registrada. Prueba iniciando sesión.');
+        setError('Este correo electrónico ya tiene una cuenta registrada. Prueba iniciando sesión o restablece tu contraseña.');
       } else if (code === 'auth/weak-password') {
         setError('La contraseña es demasiado débil. Usa al menos 6 caracteres.');
       } else if (code === 'auth/invalid-email') {
         setError('El formato del correo electrónico no es válido.');
+      } else if (code === 'auth/network-request-failed') {
+        setError('Error de conexión con el servidor. Revisa tu conexión a internet.');
+      } else if (code === 'auth/too-many-requests') {
+        setError('Demasiados intentos fallidos. Por seguridad, espera unos minutos e intenta de nuevo.');
+      } else if (code === 'auth/user-disabled') {
+        setError('Esta cuenta ha sido inhabilitada. Contacta al administrador.');
+      } else if (err.message && err.message.includes('permission-denied')) {
+        setError('Permisos insuficientes para registrar la cuenta. Contacta al administrador.');
       } else {
         setError(err.message || 'Ocurrió un error al procesar la solicitud.');
       }

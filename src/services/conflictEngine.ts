@@ -10,9 +10,30 @@ export interface ConflictCheckParams {
   spaceId: string;
   peopleIds: string[];
   attendeesCount?: number;
+  isVirtual?: boolean;
   spaces: Space[];
   people: Person[];
   existingEvents: EventEntity[];
+}
+
+export function isVirtualSpace(space?: Space): boolean {
+  if (!space) return false;
+  if (space.isVirtual) return true;
+  const name = (space.name || '').toLowerCase();
+  const loc = (space.location || '').toLowerCase();
+  return (
+    name.includes('virtual') ||
+    name.includes('teams') ||
+    name.includes('meet') ||
+    name.includes('zoom') ||
+    name.includes('en línea') ||
+    name.includes('online') ||
+    loc.includes('virtual') ||
+    loc.includes('teams') ||
+    loc.includes('meet') ||
+    loc.includes('zoom') ||
+    loc.includes('en línea')
+  );
 }
 
 export function detectConflicts({
@@ -23,6 +44,7 @@ export function detectConflicts({
   spaceId,
   peopleIds,
   attendeesCount = 0,
+  isVirtual = false,
   spaces,
   people,
   existingEvents,
@@ -35,11 +57,16 @@ export function detectConflicts({
   );
 
   const targetSpace = spaces.find((s) => s.id === spaceId);
+  const isTargetVirtual = isVirtual || isVirtualSpace(targetSpace);
 
-  // 1. Validar Conflicto de Espacio (Nivel: Bloqueo)
-  if (spaceId && targetSpace) {
+  // 1. Validar Conflicto de Espacio (Nivel: Bloqueo para presencialidad, simultaneidad permitida en virtualidad)
+  if (spaceId && targetSpace && !isTargetVirtual) {
     const overlappingSpaceEvent = dayEvents.find(
-      (e) => e.spaceId === spaceId && doIntervalsOverlap(startTime, endTime, e.startTime, e.endTime)
+      (e) =>
+        e.spaceId === spaceId &&
+        !e.isVirtual &&
+        !isVirtualSpace(spaces.find((s) => s.id === e.spaceId)) &&
+        doIntervalsOverlap(startTime, endTime, e.startTime, e.endTime)
     );
 
     if (overlappingSpaceEvent) {
@@ -47,15 +74,15 @@ export function detectConflicts({
         id: `space-${overlappingSpaceEvent.id}`,
         severity: 'bloqueo',
         type: 'espacio',
-        title: 'Espacio no disponible (Cruce de horario)',
-        message: `No es posible reservar el espacio "${targetSpace.name}" entre las ${format12Hour(startTime)} y ${format12Hour(endTime)} porque ya está ocupado por el evento "${overlappingSpaceEvent.title}" (${format12Hour(overlappingSpaceEvent.startTime)} – ${format12Hour(overlappingSpaceEvent.endTime)}).`,
+        title: 'Espacio físico no disponible (Cruce presencial)',
+        message: `No es posible reservar el espacio presencial "${targetSpace.name}" entre las ${format12Hour(startTime)} y ${format12Hour(endTime)} porque ya está ocupado por el evento "${overlappingSpaceEvent.title}" (${format12Hour(overlappingSpaceEvent.startTime)} – ${format12Hour(overlappingSpaceEvent.endTime)}).`,
         conflictingEventId: overlappingSpaceEvent.id,
         conflictingEventTitle: overlappingSpaceEvent.title,
         timeRange: `${overlappingSpaceEvent.startTime} – ${overlappingSpaceEvent.endTime}`,
       });
     }
 
-    // 1.1 Validar capacidad del espacio (Nivel: Advertencia)
+    // 1.1 Validar capacidad del espacio presencial (Nivel: Advertencia)
     if (attendeesCount > 0 && targetSpace.capacity > 0 && attendeesCount > targetSpace.capacity) {
       conflicts.push({
         id: `capacity-${targetSpace.id}`,

@@ -210,13 +210,15 @@ export const PersonalTasksView: React.FC<PersonalTasksViewProps> = ({
             </p>
           </div>
 
-          <button
-            onClick={() => setIsNewTaskModalOpen(true)}
-            className="self-start md:self-auto flex items-center gap-2 px-5 py-3 rounded-2xl bg-white text-emerald-800 hover:bg-emerald-50 active:scale-95 font-bold text-sm shadow-md transition-all shrink-0"
-          >
-            <Plus className="w-5 h-5 stroke-[2.5]" />
-            <span>Nuevo Recordatorio</span>
-          </button>
+          {user && (
+            <button
+              onClick={() => setIsNewTaskModalOpen(true)}
+              className="self-start md:self-auto flex items-center gap-2 px-5 py-3 rounded-2xl bg-white text-emerald-800 hover:bg-emerald-50 active:scale-95 font-bold text-sm shadow-md transition-all shrink-0"
+            >
+              <Plus className="w-5 h-5 stroke-[2.5]" />
+              <span>Nuevo Recordatorio</span>
+            </button>
+          )}
         </div>
 
         {/* Indicadores Clave en Vivo */}

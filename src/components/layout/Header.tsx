@@ -172,20 +172,18 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
         )}
 
-        {/* Botón "+ Nuevo Evento" */}
-        <button
-          onClick={handleCreateClick}
-          className={`flex items-center gap-2 rounded-xl px-3.5 py-2 text-xs sm:text-sm font-semibold transition-all ${
-            canEdit
-              ? 'bg-indigo-600 text-white shadow-sm hover:bg-indigo-700 active:scale-[0.98]'
-              : 'bg-slate-100 text-slate-400 border border-slate-200 hover:bg-slate-200 hover:text-slate-600'
-          }`}
-          title={!canEdit ? 'Requiere aprobación de Administrador para crear eventos' : 'Crear nuevo evento'}
-        >
-          <Plus className="w-4 h-4" />
-          <span className="hidden sm:inline">Nuevo Evento</span>
-          <span className="sm:hidden">Crear</span>
-        </button>
+        {/* Botón "+ Nuevo Evento" (Oculto para invitados y modo solo lectura) */}
+        {canEdit && (
+          <button
+            onClick={handleCreateClick}
+            className="flex items-center gap-2 rounded-xl bg-indigo-600 px-3.5 py-2 text-xs sm:text-sm font-semibold text-white shadow-sm hover:bg-indigo-700 active:scale-[0.98] transition-all"
+            title="Crear nuevo evento"
+          >
+            <Plus className="w-4 h-4" />
+            <span className="hidden sm:inline">Nuevo Evento</span>
+            <span className="sm:hidden">Crear</span>
+          </button>
+        )}
 
         {/* Centro de Notificaciones */}
         <div className="relative" ref={notificationRef}>

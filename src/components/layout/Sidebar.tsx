@@ -78,6 +78,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       id: 'solicitudes' as ActiveTab,
       label: 'Solicitudes',
       icon: SendHorizontal,
+      adminOnly: true,
       badge: pendingRequestsCount > 0 ? pendingRequestsCount : undefined,
       badgeColor: 'bg-amber-500',
     },

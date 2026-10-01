@@ -391,7 +391,7 @@ const MainApp: React.FC = () => {
             />
           )}
 
-          {activeTab === 'solicitudes' && (
+          {activeTab === 'solicitudes' && isAdmin && (
             <RequestsList
               requests={requests}
               onOpenEmailModal={(req) => setSimulatedEmailRequest(req)}

@@ -97,10 +97,13 @@ service cloud.firestore {
     // Usuarios del sistema (Protección contra escalada de privilegios)
     match /users/{userId} {
       allow read: if isAuthenticated();
-      // Registro inicial: sólo se puede crear con rol lector y pendiente (o cualquier rol si es admin)
+      // Registro inicial: sólo se puede crear con rol lector y pendiente (o administrador/aprobado si es superadmin)
       allow create: if isAuthenticated() && (
         isAdmin() || 
-        (request.auth.uid == userId && request.resource.data.role == 'lector' && request.resource.data.status == 'pendiente')
+        (request.auth.uid == userId && (
+          (request.resource.data.role == 'lector' && request.resource.data.status == 'pendiente') ||
+          (isSuperAdmin() && request.resource.data.role == 'administrador' && request.resource.data.status == 'aprobado')
+        ))
       );
       // Actualización: un usuario no puede cambiar su propio rol ni su estado
       allow update: if isAuthenticated() && (

@@ -14,13 +14,9 @@ import {
   CalendarDays,
 } from 'lucide-react';
 import { EventEntity, Space, Person, EventType, EventStatus, PeopleGroup } from '../../types';
-import {
-  formatFriendlyDate,
-  formatShortDate,
-  format12Hour,
-  getBogotaToday,
-  timeStringToMinutes,
-} from '../../lib/timezone';
+import { formatFriendlyDate, formatShortDate, format12Hour, getBogotaToday, timeStringToMinutes } from '../../lib/timezone';
+import { useAuth } from '../../context/AuthContext';
+import { getEventTypeConfig, EVENT_TYPE_CONFIG } from '../../utils/eventTypeColors';
 
 export type CalendarViewMode = 'mes' | 'semana' | 'dia' | 'agenda';
 
@@ -41,6 +37,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
   onSelectEvent,
   onOpenCreateEvent,
 }) => {
+  const { canEdit } = useAuth();
   const [currentDate, setCurrentDate] = useState<string>(getBogotaToday());
   const [viewMode, setViewMode] = useState<CalendarViewMode>('mes');
 
@@ -322,10 +319,10 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
               return (
                 <div
                   key={idx}
-                  onClick={() => onOpenCreateEvent({ date: d.dateStr })}
-                  className={`min-h-[110px] sm:min-h-[130px] p-1.5 sm:p-2 flex flex-col justify-between transition-colors hover:bg-indigo-50/20 cursor-pointer ${
-                    !d.isCurrentMonth ? 'bg-slate-50/40 text-slate-300' : 'bg-white'
-                  }`}
+                  onClick={canEdit ? () => onOpenCreateEvent({ date: d.dateStr }) : undefined}
+                  className={`min-h-[110px] sm:min-h-[130px] p-1.5 sm:p-2 flex flex-col justify-between transition-colors ${
+                    canEdit ? 'hover:bg-indigo-50/20 cursor-pointer' : 'cursor-default'
+                  } ${!d.isCurrentMonth ? 'bg-slate-50/40 text-slate-300' : 'bg-white'}`}
                 >
                   <div className="flex items-center justify-between">
                     <span
@@ -346,10 +343,10 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
                     )}
                   </div>
 
-                  {/* Lista de eventos del día */}
+                  {/* Lista de eventos del día con color por tipo de evento */}
                   <div className="mt-1 space-y-1 overflow-hidden flex-1">
                     {dayEvents.slice(0, 3).map((evt) => {
-                      const spaceColor = getSpaceColor(evt.spaceId);
+                      const typeConfig = getEventTypeConfig(evt.type);
                       return (
                         <div
                           key={evt.id}
@@ -357,18 +354,40 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
                             e.stopPropagation();
                             onSelectEvent(evt.id);
                           }}
-                          style={{ borderLeftColor: spaceColor }}
-                          className="group rounded-md border-l-3 bg-slate-50 hover:bg-slate-100 p-1 text-[11px] shadow-2xs transition-all hover:scale-[1.01]"
+                          style={{ borderLeftColor: typeConfig.color }}
+                          className="group rounded-md border-l-4 bg-slate-50 hover:bg-slate-100 p-1 text-[11px] shadow-2xs transition-all hover:scale-[1.01] cursor-pointer"
                         >
                           <div className="flex items-center justify-between text-[10px] font-semibold text-slate-500">
-                            <span>{evt.startTime}</span>
-                            <span className="truncate max-w-[60px] text-slate-400 hidden sm:inline">
+                            <div className="flex items-center gap-1 truncate">
+                              <span
+                                className="h-1.5 w-1.5 rounded-full shrink-0"
+                                style={{ backgroundColor: typeConfig.color }}
+                              />
+                              <span>{evt.startTime}</span>
+                            </div>
+                            <span className="truncate max-w-[55px] text-slate-400 hidden sm:inline text-[9px]">
                               {evt.spaceName}
                             </span>
                           </div>
-                          <p className="font-bold text-slate-800 truncate leading-tight group-hover:text-indigo-600">
+                          <p className="font-bold text-slate-800 truncate leading-tight group-hover:text-indigo-600 mt-0.5">
                             {evt.title}
                           </p>
+                          <div className="flex items-center gap-1 mt-0.5">
+                            <span
+                              className="text-[9px] font-semibold px-1 rounded truncate leading-tight"
+                              style={{
+                                color: typeConfig.color,
+                                backgroundColor: `${typeConfig.color}15`,
+                              }}
+                            >
+                              {typeConfig.label}
+                            </span>
+                            {evt.isVirtual && (
+                              <span className="text-[9px] font-bold px-1 rounded bg-cyan-100 text-cyan-800 leading-tight">
+                                Virtual
+                              </span>
+                            )}
+                          </div>
                         </div>
                       );
                     })}
@@ -403,65 +422,80 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
             ) : (
               filteredEvents
                 .sort((a, b) => `${a.date} ${a.startTime}`.localeCompare(`${b.date} ${b.startTime}`))
-                .map((evt) => (
-                  <div
-                    key={evt.id}
-                    onClick={() => onSelectEvent(evt.id)}
-                    className="py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-slate-50 p-3 rounded-xl transition-all cursor-pointer"
-                  >
-                    <div className="flex items-start gap-4">
-                      {/* Fecha */}
-                      <div className="flex flex-col items-center justify-center h-12 w-14 rounded-xl bg-indigo-50 border border-indigo-100 text-indigo-700 shrink-0">
-                        <span className="text-[10px] font-bold uppercase">{evt.date.split('-')[1]}</span>
-                        <span className="text-lg font-black leading-none">{evt.date.split('-')[2]}</span>
-                      </div>
-
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span
-                            className="h-2 w-2 rounded-full"
-                            style={{ backgroundColor: getSpaceColor(evt.spaceId) }}
-                          />
-                          <h4 className="text-sm font-bold text-slate-900 hover:text-indigo-600 transition-colors">
-                            {evt.title}
-                          </h4>
-                          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600 capitalize">
-                            {evt.type}
-                          </span>
+                .map((evt) => {
+                  const typeConfig = getEventTypeConfig(evt.type);
+                  return (
+                    <div
+                      key={evt.id}
+                      onClick={() => onSelectEvent(evt.id)}
+                      className="py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-slate-50 p-3 rounded-xl transition-all cursor-pointer"
+                    >
+                      <div className="flex items-start gap-4">
+                        {/* Fecha */}
+                        <div className="flex flex-col items-center justify-center h-12 w-14 rounded-xl bg-indigo-50 border border-indigo-100 text-indigo-700 shrink-0">
+                          <span className="text-[10px] font-bold uppercase">{evt.date.split('-')[1]}</span>
+                          <span className="text-lg font-black leading-none">{evt.date.split('-')[2]}</span>
                         </div>
 
-                        <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500">
-                          <span className="flex items-center gap-1 font-mono">
-                            <Clock className="w-3.5 h-3.5 text-slate-400" />
-                            {format12Hour(evt.startTime)} – {format12Hour(evt.endTime)} ({evt.durationMinutes} min)
-                          </span>
-                          <span className="flex items-center gap-1">
-                            <MapPin className="w-3.5 h-3.5 text-slate-400" />
-                            {evt.spaceName}
-                          </span>
-                          <span className="flex items-center gap-1">
-                            <User className="w-3.5 h-3.5 text-slate-400" />
-                            {evt.responsibleName}
-                          </span>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span
+                              className="h-2.5 w-2.5 rounded-full shrink-0 shadow-2xs"
+                              style={{ backgroundColor: typeConfig.color }}
+                            />
+                            <h4 className="text-sm font-bold text-slate-900 hover:text-indigo-600 transition-colors">
+                              {evt.title}
+                            </h4>
+                            <span
+                              className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold border"
+                              style={{
+                                backgroundColor: `${typeConfig.color}15`,
+                                borderColor: `${typeConfig.color}40`,
+                                color: typeConfig.color,
+                              }}
+                            >
+                              {typeConfig.label}
+                            </span>
+                            {evt.isVirtual && (
+                              <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-cyan-50 text-cyan-700 border border-cyan-200">
+                                Virtual
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500">
+                            <span className="flex items-center gap-1 font-mono">
+                              <Clock className="w-3.5 h-3.5 text-slate-400" />
+                              {format12Hour(evt.startTime)} – {format12Hour(evt.endTime)} ({evt.durationMinutes} min)
+                            </span>
+                            <span className="flex items-center gap-1">
+                              <MapPin className="w-3.5 h-3.5 text-slate-400" />
+                              {evt.spaceName}
+                            </span>
+                            <span className="flex items-center gap-1">
+                              <User className="w-3.5 h-3.5 text-slate-400" />
+                              {evt.responsibleName}
+                            </span>
+                          </div>
                         </div>
                       </div>
-                    </div>
 
-                    <div className="self-end sm:self-center">
-                      <span
-                        className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
-                          evt.status === 'confirmado'
-                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                            : evt.status === 'pendiente_confirmacion'
-                            ? 'bg-purple-50 text-purple-700 border border-purple-200'
-                            : 'bg-indigo-50 text-indigo-700 border border-indigo-200'
-                        }`}
-                      >
-                        {evt.status.replace('_', ' ')}
-                      </span>
+                      <div className="self-end sm:self-center">
+                        <span
+                          className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
+                            evt.status === 'confirmado'
+                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                              : evt.status === 'pendiente_confirmacion'
+                              ? 'bg-purple-50 text-purple-700 border border-purple-200'
+                              : 'bg-indigo-50 text-indigo-700 border border-indigo-200'
+                          }`}
+                        >
+                          {evt.status.replace('_', ' ')}
+                        </span>
+                      </div>
                     </div>
-                  </div>
-                ))
+                  );
+                })
             )}
           </div>
         </div>
@@ -474,62 +508,142 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
             <h3 className="text-sm font-bold text-slate-900">
               Horario Detallado para {formatFriendlyDate(currentDate)}
             </h3>
-            <button
-              onClick={() => onOpenCreateEvent({ date: currentDate })}
-              className="flex items-center gap-1.5 text-xs font-semibold text-indigo-600 hover:text-indigo-800"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Programar en este día</span>
-            </button>
+            {canEdit && (
+              <button
+                onClick={() => onOpenCreateEvent({ date: currentDate })}
+                className="flex items-center gap-1.5 text-xs font-semibold text-indigo-600 hover:text-indigo-800"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Programar en este día</span>
+              </button>
+            )}
           </div>
 
           <div className="mt-4 space-y-3">
             {filteredEvents.filter((e) => e.date === currentDate).length === 0 ? (
               <div className="py-12 text-center text-xs text-slate-400">
                 No hay actividades programadas para este día.{' '}
-                <button
-                  onClick={() => onOpenCreateEvent({ date: currentDate })}
-                  className="text-indigo-600 font-semibold underline hover:text-indigo-800 ml-1"
-                >
-                  Haz clic para programar una
-                </button>
+                {canEdit && (
+                  <button
+                    onClick={() => onOpenCreateEvent({ date: currentDate })}
+                    className="text-indigo-600 font-semibold underline hover:text-indigo-800 ml-1"
+                  >
+                    Haz clic para programar una
+                  </button>
+                )}
               </div>
             ) : (
               filteredEvents
                 .filter((e) => e.date === currentDate)
                 .sort((a, b) => a.startTime.localeCompare(b.startTime))
-                .map((evt) => (
-                  <div
-                    key={evt.id}
-                    onClick={() => onSelectEvent(evt.id)}
-                    className="p-4 rounded-xl border border-slate-200/90 bg-slate-50/50 hover:bg-white hover:shadow-md transition-all cursor-pointer flex flex-col sm:flex-row sm:items-center justify-between gap-3"
-                  >
-                    <div className="flex items-start gap-4">
-                      <div className="flex flex-col items-center justify-center p-2 rounded-lg bg-indigo-600 text-white font-mono font-bold text-xs shrink-0">
-                        <span>{evt.startTime}</span>
-                        <span className="text-[10px] opacity-80">{evt.endTime}</span>
-                      </div>
-                      <div>
-                        <h4 className="text-sm font-bold text-slate-900">{evt.title}</h4>
-                        <p className="text-xs text-slate-500 mt-0.5">{evt.description}</p>
-                        <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-slate-600">
-                          <span className="flex items-center gap-1 font-semibold text-indigo-700">
-                            <MapPin className="w-3.5 h-3.5" />
-                            {evt.spaceName}
-                          </span>
-                          <span className="flex items-center gap-1">
-                            <User className="w-3.5 h-3.5 text-slate-400" />
-                            Responsable: {evt.responsibleName}
-                          </span>
+                .map((evt) => {
+                  const typeConfig = getEventTypeConfig(evt.type);
+                  return (
+                    <div
+                      key={evt.id}
+                      onClick={() => onSelectEvent(evt.id)}
+                      className="p-4 rounded-xl border border-slate-200/90 bg-slate-50/50 hover:bg-white hover:shadow-md transition-all cursor-pointer flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                    >
+                      <div className="flex items-start gap-4">
+                        <div
+                          className="flex flex-col items-center justify-center p-2 rounded-lg text-white font-mono font-bold text-xs shrink-0 shadow-xs"
+                          style={{ backgroundColor: typeConfig.color }}
+                        >
+                          <span>{evt.startTime}</span>
+                          <span className="text-[10px] opacity-90">{evt.endTime}</span>
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h4 className="text-sm font-bold text-slate-900">{evt.title}</h4>
+                            <span
+                              className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold border"
+                              style={{
+                                backgroundColor: `${typeConfig.color}15`,
+                                borderColor: `${typeConfig.color}40`,
+                                color: typeConfig.color,
+                              }}
+                            >
+                              <span
+                                className="h-1.5 w-1.5 rounded-full"
+                                style={{ backgroundColor: typeConfig.color }}
+                              />
+                              {typeConfig.label}
+                            </span>
+                            {evt.isVirtual && (
+                              <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-cyan-50 text-cyan-700 border border-cyan-200">
+                                Virtual
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-slate-500 mt-0.5">{evt.description}</p>
+                          <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-slate-600">
+                            <span className="flex items-center gap-1 font-semibold text-indigo-700">
+                              <MapPin className="w-3.5 h-3.5" />
+                              {evt.spaceName}
+                            </span>
+                            <span className="flex items-center gap-1">
+                              <User className="w-3.5 h-3.5 text-slate-400" />
+                              Responsable: {evt.responsibleName}
+                            </span>
+                          </div>
                         </div>
                       </div>
                     </div>
-                  </div>
-                ))
+                  );
+                })
             )}
           </div>
         </div>
       )}
+
+      {/* Convención / Leyenda interactiva de Colores por Tipo de Evento */}
+      <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-xs">
+        <div className="flex items-center justify-between mb-2.5">
+          <div className="flex items-center gap-2">
+            <span className="h-2.5 w-2.5 rounded-full bg-indigo-600" />
+            <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+              Convención de Colores por Tipo de Evento
+            </h4>
+          </div>
+          {filterType !== 'todos' && (
+            <button
+              onClick={() => setFilterType('todos')}
+              className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-800"
+            >
+              Restablecer todos los tipos
+            </button>
+          )}
+        </div>
+        <div className="flex flex-wrap gap-2 pt-1">
+          {(Object.keys(EVENT_TYPE_CONFIG) as EventType[]).map((tKey) => {
+            const config = EVENT_TYPE_CONFIG[tKey];
+            const isSelected = filterType === tKey;
+            return (
+              <button
+                key={tKey}
+                onClick={() => setFilterType(filterType === tKey ? 'todos' : tKey)}
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-semibold transition-all border ${
+                  isSelected
+                    ? 'ring-2 ring-indigo-500 shadow-xs'
+                    : 'hover:bg-slate-50'
+                }`}
+                style={{
+                  borderColor: isSelected ? config.color : `${config.color}40`,
+                  backgroundColor: isSelected ? `${config.color}25` : `${config.color}0D`,
+                  color: config.color,
+                }}
+                title={`Filtrar por ${config.label}`}
+              >
+                <span
+                  className="h-2 w-2 rounded-full shrink-0 shadow-2xs"
+                  style={{ backgroundColor: config.color }}
+                />
+                <span>{config.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 };

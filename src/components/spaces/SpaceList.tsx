@@ -34,7 +34,7 @@ export const SpaceList: React.FC<SpaceListProps> = ({
   onSelectEvent,
   onReserveSpace,
 }) => {
-  const { isAdmin } = useAuth();
+  const { isAdmin, canEdit } = useAuth();
   const [filterType, setFilterType] = useState('todos');
 
   const today = getBogotaToday();
@@ -220,16 +220,18 @@ export const SpaceList: React.FC<SpaceListProps> = ({
                 </div>
               </div>
 
-              {/* Botón de acción */}
-              <div className="mt-4 pt-3 border-t border-slate-100">
-                <button
-                  onClick={() => onReserveSpace(space.id)}
-                  className="w-full flex items-center justify-center gap-1.5 py-2 rounded-xl border border-indigo-200 bg-indigo-50/50 text-indigo-700 text-xs font-bold hover:bg-indigo-600 hover:text-white transition-all"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>Programar en este Espacio</span>
-                </button>
-              </div>
+              {/* Botón de acción (Solo para usuarios con permisos) */}
+              {canEdit && (
+                <div className="mt-4 pt-3 border-t border-slate-100">
+                  <button
+                    onClick={() => onReserveSpace(space.id)}
+                    className="w-full flex items-center justify-center gap-1.5 py-2 rounded-xl border border-indigo-200 bg-indigo-50/50 text-indigo-700 text-xs font-bold hover:bg-indigo-600 hover:text-white transition-all"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Programar en este Espacio</span>
+                  </button>
+                </div>
+              )}
             </div>
           );
         })}

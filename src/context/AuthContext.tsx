@@ -217,35 +217,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         cleanEmail === 'proyectostic.med@udea.edu.co';
 
       if (isFirebaseConfigured && auth && db) {
-        // Validar unicidad en Firestore
-        const usersRef = collection(db, 'users');
-        const q = query(usersRef, where('email', '==', cleanEmail));
-        const userQuerySnap = await getDocs(q);
-        if (!userQuerySnap.empty) {
-          const err: any = new Error(
-            'Ya existe una cuenta registrada con este correo electrónico. Por favor inicia sesión o restablece tu contraseña.'
-          );
-          err.code = 'auth/email-already-in-use';
-          throw err;
-        }
-
         const userCred = await createUserWithEmailAndPassword(auth, cleanEmail, pass);
         if (displayName) {
-          await updateProfile(userCred.user, { displayName });
+          try {
+            await updateProfile(userCred.user, { displayName });
+          } catch (e) {
+            console.warn('No se pudo actualizar displayName en auth:', e);
+          }
         }
         const newProfile: UserProfile = {
           uid: userCred.user.uid,
-          displayName: displayName || cleanEmail.split('@')[0],
+          displayName: displayName.trim() || cleanEmail.split('@')[0],
           email: cleanEmail,
           role: isRootAdmin ? 'administrador' : 'lector',
           status: isRootAdmin ? 'aprobado' : 'pendiente',
           createdAt: new Date().toISOString(),
           lastLogin: new Date().toISOString(),
         };
-        await setDoc(doc(db, 'users', userCred.user.uid), {
-          ...newProfile,
-          timestamp: serverTimestamp(),
-        });
+        await setDoc(
+          doc(db, 'users', userCred.user.uid),
+          {
+            ...newProfile,
+            timestamp: serverTimestamp(),
+          },
+          { merge: true }
+        );
         setUser(newProfile);
         localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(newProfile));
       } else {

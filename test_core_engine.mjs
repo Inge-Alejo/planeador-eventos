@@ -15,25 +15,44 @@ function doIntervalsOverlap(startA, endA, startB, endB) {
   return Math.max(a1, b1) < Math.min(a2, b2);
 }
 
+function isVirtualSpace(space) {
+  if (!space) return false;
+  if (space.isVirtual) return true;
+  const name = (space.name || '').toLowerCase();
+  const loc = (space.location || '').toLowerCase();
+  return (
+    name.includes('virtual') ||
+    name.includes('teams') ||
+    name.includes('meet') ||
+    name.includes('zoom') ||
+    loc.includes('virtual')
+  );
+}
+
 // 2. Motor de Conflictos
-function detectConflicts({ eventId, date, startTime, endTime, spaceId, peopleIds, existingEvents, spaces, people }) {
+function detectConflicts({ eventId, date, startTime, endTime, spaceId, peopleIds = [], existingEvents = [], spaces = [], isVirtual = false }) {
   const conflicts = [];
   const dayEvents = existingEvents.filter(
     (e) => e.date === date && e.id !== eventId && e.status !== 'cancelado'
   );
 
-  // Conflicto de Espacio
-  const spaceConflict = dayEvents.find(
-    (e) => e.spaceId === spaceId && doIntervalsOverlap(startTime, endTime, e.startTime, e.endTime)
-  );
+  const targetSpace = spaces.find((s) => s.id === spaceId);
+  const isTargetVirtual = isVirtual || isVirtualSpace(targetSpace);
 
-  if (spaceConflict) {
-    conflicts.push({
-      severity: 'bloqueo',
-      type: 'espacio',
-      conflictingEventId: spaceConflict.id,
-      title: 'Espacio no disponible',
-    });
+  // Conflicto de Espacio (Solo si no es virtual)
+  if (spaceId && !isTargetVirtual) {
+    const spaceConflict = dayEvents.find(
+      (e) => e.spaceId === spaceId && !e.isVirtual && !isVirtualSpace(spaces.find((s) => s.id === e.spaceId)) && doIntervalsOverlap(startTime, endTime, e.startTime, e.endTime)
+    );
+
+    if (spaceConflict) {
+      conflicts.push({
+        severity: 'bloqueo',
+        type: 'espacio',
+        conflictingEventId: spaceConflict.id,
+        title: 'Espacio no disponible (Cruce presencial)',
+      });
+    }
   }
 
   // Conflicto de Personas
@@ -126,5 +145,40 @@ const cleanTest = detectConflicts({
 assert.strictEqual(cleanTest.hasBlockingConflicts, false);
 assert.strictEqual(cleanTest.hasWarnings, false);
 assert.strictEqual(cleanTest.conflicts.length, 0);
+
+// PRUEBA 5: Eventos Virtuales simultáneos permitidos sin bloqueo de espacio
+console.log('✓ Prueba 5: Simultaneidad de eventos virtuales permitida a la misma hora');
+const mockSpaces = [
+  { id: 'auditorio-1', name: 'Auditorio Mayor', isVirtual: false },
+  { id: 'espacio-virtual', name: 'Espacio Virtual / Teams', isVirtual: true },
+];
+
+const mockVirtualEvents = [
+  {
+    id: 'evt-virtual-1',
+    title: 'Clase Virtual Teams Grupo A',
+    date: '2026-10-15',
+    startTime: '10:00',
+    endTime: '12:00',
+    spaceId: 'espacio-virtual',
+    isVirtual: true,
+    peopleIds: ['profesor-1'],
+    status: 'confirmado',
+  },
+];
+
+const simultaneousVirtualTest = detectConflicts({
+  date: '2026-10-15',
+  startTime: '10:00',
+  endTime: '12:00',
+  spaceId: 'espacio-virtual',
+  isVirtual: true,
+  peopleIds: ['profesor-2'],
+  existingEvents: mockVirtualEvents,
+  spaces: mockSpaces,
+});
+
+assert.strictEqual(simultaneousVirtualTest.hasBlockingConflicts, false, 'Eventos virtuales deben permitir simultaneidad');
+assert.strictEqual(simultaneousVirtualTest.conflicts.length, 0, 'No debe haber conflicto de espacio para eventos virtuales');
 
 console.log('✅ TODAS LAS PRUEBAS AUTOMATIZADAS PASARON EXITOSAMENTE (100% OK)');

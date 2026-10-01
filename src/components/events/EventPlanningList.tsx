@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { formatFriendlyDate, formatShortDate, format12Hour } from '../../lib/timezone';
 import { useAuth } from '../../context/AuthContext';
+import { getEventTypeConfig } from '../../utils/eventTypeColors';
 
 interface EventPlanningListProps {
   events: EventEntity[];
@@ -37,7 +38,7 @@ export const EventPlanningList: React.FC<EventPlanningListProps> = ({
   onDeleteEvent,
   initialFilter,
 }) => {
-  const { isAdmin } = useAuth();
+  const { isAdmin, canEdit } = useAuth();
   const [query, setQuery] = useState('');
   const [filterType, setFilterType] = useState('todos');
   const [filterStatus, setFilterStatus] = useState(initialFilter || 'todos');
@@ -89,13 +90,15 @@ export const EventPlanningList: React.FC<EventPlanningListProps> = ({
             </p>
           </div>
 
-          <button
-            onClick={onOpenCreateEvent}
-            className="flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-indigo-700 active:scale-[0.98] transition-all self-start sm:self-center"
-          >
-            <Plus className="w-4 h-4" />
-            <span>+ Nuevo Evento</span>
-          </button>
+          {canEdit && (
+            <button
+              onClick={onOpenCreateEvent}
+              className="flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-indigo-700 active:scale-[0.98] transition-all self-start sm:self-center"
+            >
+              <Plus className="w-4 h-4" />
+              <span>+ Nuevo Evento</span>
+            </button>
+          )}
         </div>
 
         {/* Barra de Filtros Combinables */}
@@ -191,7 +194,27 @@ export const EventPlanningList: React.FC<EventPlanningListProps> = ({
                         <div className="font-bold text-slate-900 hover:text-indigo-600 transition-colors">
                           {evt.title}
                         </div>
-                        <div className="text-[11px] text-slate-400 capitalize">{evt.type}</div>
+                        <div className="flex items-center gap-1.5 mt-1">
+                          <span
+                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border"
+                            style={{
+                              backgroundColor: `${getEventTypeConfig(evt.type).color}15`,
+                              borderColor: `${getEventTypeConfig(evt.type).color}40`,
+                              color: getEventTypeConfig(evt.type).color,
+                            }}
+                          >
+                            <span
+                              className="h-1.5 w-1.5 rounded-full"
+                              style={{ backgroundColor: getEventTypeConfig(evt.type).color }}
+                            />
+                            {getEventTypeConfig(evt.type).label}
+                          </span>
+                          {evt.isVirtual && (
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-cyan-50 text-cyan-700 border border-cyan-200">
+                              Virtual
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="py-3.5 px-4 font-mono text-[11px]">
                         <div className="font-semibold text-slate-800">{formatShortDate(evt.date)}</div>
