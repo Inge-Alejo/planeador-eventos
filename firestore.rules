@@ -81,7 +81,10 @@ service cloud.firestore {
       allow read, update, delete: if isAuthenticated() && (
         isAdmin() || 
         resource.data.recipientEmail == request.auth.token.email ||
+        resource.data.userId == request.auth.token.email ||
+        resource.data.userId == request.auth.uid ||
         resource.data.recipientEmail == 'ALL_ADMINS' ||
+        resource.data.userId == 'ALL_ADMINS' ||
         resource.data.recipientEmail == 'ALL'
       );
       allow create: if isAuthenticated();

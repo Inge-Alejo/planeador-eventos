@@ -11,6 +11,8 @@ import {
   CheckCircle2,
   FileText,
   UserCheck,
+  Mail,
+  Bell,
 } from 'lucide-react';
 import { EventEntity, Space, Person, EventType, EventStatus, PeopleGroup } from '../../types';
 import { detectConflicts } from '../../services/conflictEngine';
@@ -20,7 +22,11 @@ import { useDismissable } from '../../hooks/useDismissable';
 interface EventModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (event: Omit<EventEntity, 'id'> & { id?: string }, sendRequestsTo?: string[]) => Promise<void>;
+  onSave: (
+    event: Omit<EventEntity, 'id'> & { id?: string },
+    peopleToInvite?: string[],
+    sendEmail?: boolean
+  ) => Promise<void>;
   eventToEdit?: EventEntity | null;
   spaces: Space[];
   people: Person[];
@@ -53,7 +59,7 @@ export const EventModal: React.FC<EventModalProps> = ({
   const [status, setStatus] = useState<EventStatus>('programado');
   const [isVirtual, setIsVirtual] = useState<boolean>(false);
   const [notes, setNotes] = useState('');
-  const [sendParticipationEmails, setSendParticipationEmails] = useState(true);
+  const [sendParticipationEmails, setSendParticipationEmails] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleToggleGroup = (group: PeopleGroup) => {
@@ -86,6 +92,7 @@ export const EventModal: React.FC<EventModalProps> = ({
       setStatus(eventToEdit.status);
       setIsVirtual(Boolean(eventToEdit.isVirtual));
       setNotes(eventToEdit.notes || '');
+      setSendParticipationEmails(false);
     } else {
       // Valores por defecto o preset
       setTitle('');
@@ -105,6 +112,7 @@ export const EventModal: React.FC<EventModalProps> = ({
       setSelectedPeopleIds([]);
       setStatus('programado');
       setNotes('');
+      setSendParticipationEmails(false);
     }
   }, [eventToEdit, initialPreset, isOpen, spaces, people]);
 
@@ -193,7 +201,8 @@ export const EventModal: React.FC<EventModalProps> = ({
 
       await onSave(
         eventToEdit ? { ...eventPayload, id: eventToEdit.id } : eventPayload,
-        sendParticipationEmails ? selectedPeopleIds : []
+        selectedPeopleIds,
+        sendParticipationEmails
       );
       onClose();
     } catch (err: any) {
@@ -540,17 +549,63 @@ export const EventModal: React.FC<EventModalProps> = ({
               })}
             </div>
 
-            {selectedPeopleIds.length > 0 && (
-              <label className="mt-2 flex items-center gap-2 text-xs text-slate-600 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={sendParticipationEmails}
-                  onChange={(e) => setSendParticipationEmails(e.target.checked)}
-                  className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
-                />
-                <span>Enviar automáticamente solicitud y enlace de confirmación por correo</span>
-              </label>
-            )}
+            {/* Control de Desactivar / Activar Envio Automatico de Correo vs Notificacion en Panel */}
+            <div className="mt-3 rounded-2xl border p-3.5 transition-all bg-slate-50/80 border-slate-200">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <div className={`flex h-9 w-9 items-center justify-center rounded-xl transition-colors ${
+                    sendParticipationEmails ? 'bg-indigo-600 text-white' : 'bg-slate-200 text-slate-600'
+                  }`}>
+                    <Mail className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-slate-800">
+                        Envío de correo institucional (Brevo)
+                      </span>
+                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold border transition-colors ${
+                        sendParticipationEmails
+                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                          : 'bg-slate-100 text-slate-600 border-slate-200'
+                      }`}>
+                        {sendParticipationEmails ? 'Activado' : 'Desactivado'}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-500 mt-0.5 leading-snug">
+                      {sendParticipationEmails
+                        ? 'Se enviará un correo automático a cada convocado con el enlace de confirmación directa.'
+                        : 'No se enviarán correos automáticos. Los convocados recibirán la notificación en su panel de usuario al iniciar sesión.'}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Botón Switch / Toggle */}
+                <button
+                  type="button"
+                  onClick={() => setSendParticipationEmails(!sendParticipationEmails)}
+                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 ${
+                    sendParticipationEmails ? 'bg-indigo-600' : 'bg-slate-300'
+                  }`}
+                  role="switch"
+                  aria-checked={sendParticipationEmails}
+                  title={sendParticipationEmails ? 'Clic para desactivar envío de correo' : 'Clic para activar envío de correo'}
+                >
+                  <span
+                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
+                      sendParticipationEmails ? 'translate-x-5' : 'translate-x-0'
+                    }`}
+                  />
+                </button>
+              </div>
+
+              {/* Nota confirmando que la notificación en plataforma siempre llega */}
+              <div className="mt-2.5 pt-2 border-t border-slate-200/60 flex items-center gap-1.5 text-[11px] text-indigo-700 font-medium">
+                <Bell className="w-3.5 h-3.5 shrink-0 text-indigo-600" />
+                <span>
+                  La notificación interna en plataforma <strong>siempre llegará</strong> al panel de los participantes asignados al iniciar sesión.
+                </span>
+              </div>
+            </div>
           </div>
 
           {/* Descripción y Observaciones */}

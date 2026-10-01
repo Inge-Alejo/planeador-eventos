@@ -14,6 +14,7 @@ export interface UserProfile {
   lastLogin: string;
   approvedBy?: string;
   approvedAt?: string;
+  updatedAt?: string;
 }
 
 export type SpaceType = 'auditorio' | 'estudio' | 'sala_reuniones' | 'laboratorio' | 'aula' | 'otro';
@@ -164,6 +165,7 @@ export type NotificationType =
 export interface AppNotification {
   id: string;
   userId: string; // uid or 'ALL_ADMINS'
+  recipientEmail?: string;
   type: NotificationType;
   title: string;
   message: string;
@@ -180,6 +182,8 @@ export type AuditAction =
   | 'PERSONA_SOLICITADA' 
   | 'SOLICITUD_CONFIRMADA' 
   | 'SOLICITUD_RECHAZADA'
+  | 'APROBACION_USUARIO'
+  | 'CAMBIO_ESTADO_USUARIO'
   | 'ESPACIO_CREADO'
   | 'ESPACIO_MODIFICADO'
   | 'ESPACIO_ELIMINADO'

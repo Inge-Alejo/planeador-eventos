@@ -147,14 +147,15 @@ const MainApp: React.FC = () => {
     setIsEventModalOpen(true);
   };
 
-  // Guardar evento y generar solicitudes por correo si corresponde
+  // Guardar evento y generar solicitudes/notificaciones
   const handleSaveEvent = async (
     eventPayload: Omit<EventEntity, 'id'> & { id?: string },
-    peopleToInvite: string[] = []
+    peopleToInvite: string[] = [],
+    sendEmail: boolean = false
   ) => {
     const savedId = await saveEvent(eventPayload);
 
-    // Enviar solicitudes de participación
+    // Generar solicitudes de participación y notificaciones a convocados
     if (peopleToInvite.length > 0) {
       for (const pid of peopleToInvite) {
         const person = people.find((p) => p.id === pid);
@@ -164,18 +165,21 @@ const MainApp: React.FC = () => {
             (r) => r.eventId === savedId && r.personId === pid
           );
           if (!alreadyRequested) {
-            await createParticipationRequest({
-              eventId: savedId,
-              eventTitle: eventPayload.title,
-              eventDate: eventPayload.date,
-              eventStartTime: eventPayload.startTime,
-              eventEndTime: eventPayload.endTime,
-              spaceName: eventPayload.spaceName,
-              personId: person.id,
-              personName: `${person.firstName} ${person.lastName}`,
-              personEmail: person.email,
-              status: 'pendiente',
-            });
+            await createParticipationRequest(
+              {
+                eventId: savedId,
+                eventTitle: eventPayload.title,
+                eventDate: eventPayload.date,
+                eventStartTime: eventPayload.startTime,
+                eventEndTime: eventPayload.endTime,
+                spaceName: eventPayload.spaceName,
+                personId: person.id,
+                personName: `${person.firstName} ${person.lastName}`,
+                personEmail: person.email,
+                status: 'pendiente',
+              },
+              sendEmail
+            );
           }
         }
       }
@@ -419,11 +423,14 @@ const MainApp: React.FC = () => {
 
           {activeTab === 'auditoria' && <AuditView auditLogs={auditLogs} />}
 
-          {activeTab === 'usuarios' && (
+          {activeTab === 'usuarios' && isAdmin && (
             <UserManagementView
               users={users}
               onUpdateUser={updateUserRoleAndStatus}
               currentUserUid={user?.uid}
+              currentUserEmail={user?.email}
+              currentUserName={user?.displayName}
+              isAdmin={isAdmin}
             />
           )}
 

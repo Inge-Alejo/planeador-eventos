@@ -792,14 +792,17 @@ export function subscribeToUsers(callback: (users: UserProfile[]) => void): () =
 export async function updateUserRoleAndStatus(
   uid: string,
   newRole: UserRole,
-  newStatus: UserAccountStatus
+  newStatus: UserAccountStatus,
+  approvedBy?: string
 ): Promise<void> {
+  const now = new Date().toISOString();
   if (isFirebaseConfigured && db) {
     const userRef = doc(db, 'users', uid);
     await updateDoc(userRef, {
       role: newRole,
       status: newStatus,
-      updatedAt: new Date().toISOString(),
+      updatedAt: now,
+      ...(approvedBy ? { approvedBy, approvedAt: now } : {}),
     });
     return;
   }
@@ -812,6 +815,8 @@ export async function updateUserRoleAndStatus(
       ...current[idx],
       role: newRole,
       status: newStatus,
+      updatedAt: now,
+      ...(approvedBy ? { approvedBy, approvedAt: now } : {}),
     };
     save(STORAGE_KEYS.USERS_LIST, current);
     userListeners.forEach((fn) => fn(current));
@@ -1305,7 +1310,8 @@ export async function deletePersonalTask(taskId: string): Promise<void> {
 
 // Operaciones de Solicitud de Participación y Confirmación por Token
 export async function createParticipationRequest(
-  req: Omit<ParticipationRequest, 'id' | 'token' | 'createdAt'>
+  req: Omit<ParticipationRequest, 'id' | 'token' | 'createdAt'>,
+  sendEmail: boolean = false
 ): Promise<ParticipationRequest> {
   const now = new Date().toISOString();
   const id = `req-${Date.now()}`;
@@ -1324,18 +1330,21 @@ export async function createParticipationRequest(
         // Notificación para Administradores
         await addDoc(collection(db, 'notifications'), {
           userId: 'ALL_ADMINS',
+          recipientEmail: 'ALL_ADMINS',
           type: 'solicitud',
           title: 'Solicitud de Participación Enviada',
-          message: `Se ha invitado a ${req.personName} para el evento "${req.eventTitle}".`,
+          message: `Se ha convocado a ${req.personName} para el evento "${req.eventTitle}".`,
           eventId: req.eventId,
           read: false,
           createdAt: now,
         });
 
-        // Notificación exclusiva para la persona invitada
+        // Notificación exclusiva para la persona invitada (aparece en su panel al iniciar sesión)
         if (req.personEmail) {
+          const cleanEmail = req.personEmail.toLowerCase().trim();
           await addDoc(collection(db, 'notifications'), {
-            userId: req.personEmail.toLowerCase().trim(),
+            userId: cleanEmail,
+            recipientEmail: cleanEmail,
             type: 'solicitud',
             title: 'Convocatoria a Evento Institucional',
             message: `Has sido invitado/a a participar en el evento "${req.eventTitle}" (${req.eventDate} a las ${req.eventStartTime}).`,
@@ -1348,10 +1357,12 @@ export async function createParticipationRequest(
         console.warn('Error guardando notif en Firestore:', e);
       }
 
-      // Enviar correo automático mediante Brevo en segundo plano
-      sendParticipationEmail(newReq).catch((err) => {
-        console.warn('Envío de correo automático Brevo en segundo plano:', err);
-      });
+      // Enviar correo automático mediante Brevo en segundo plano SOLO SI sendEmail es true
+      if (sendEmail) {
+        sendParticipationEmail(newReq).catch((err) => {
+          console.warn('Envío de correo automático Brevo en segundo plano:', err);
+        });
+      }
 
       return newReq;
     } catch (err) {
@@ -1366,15 +1377,18 @@ export async function createParticipationRequest(
 
   addNotification({
     userId: 'ALL_ADMINS',
+    recipientEmail: 'ALL_ADMINS',
     type: 'solicitud',
     title: 'Solicitud de Participación Enviada',
-    message: `Se ha invitado a ${req.personName} para el evento "${req.eventTitle}".`,
+    message: `Se ha convocado a ${req.personName} para el evento "${req.eventTitle}".`,
     eventId: req.eventId,
   });
 
   if (req.personEmail) {
+    const cleanEmail = req.personEmail.toLowerCase().trim();
     addNotification({
-      userId: req.personEmail.toLowerCase().trim(),
+      userId: cleanEmail,
+      recipientEmail: cleanEmail,
       type: 'solicitud',
       title: 'Convocatoria a Evento Institucional',
       message: `Has sido invitado/a a participar en el evento "${req.eventTitle}" (${req.eventDate} a las ${req.eventStartTime}).`,
@@ -1382,10 +1396,12 @@ export async function createParticipationRequest(
     });
   }
 
-  // Enviar correo automático mediante Brevo en segundo plano
-  sendParticipationEmail(newReq).catch((err) => {
-    console.warn('Envío de correo automático Brevo en segundo plano:', err);
-  });
+  // Enviar correo automático mediante Brevo en segundo plano SOLO SI sendEmail es true
+  if (sendEmail) {
+    sendParticipationEmail(newReq).catch((err) => {
+      console.warn('Envío de correo automático Brevo en segundo plano:', err);
+    });
+  }
 
   return newReq;
 }
