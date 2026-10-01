@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
-  X,
+  Calendar,
   Mail,
   Lock,
   User,
@@ -9,52 +9,21 @@ import {
   EyeOff,
   AlertCircle,
   CheckCircle2,
-  Calendar,
   ArrowRight,
+  Sparkles,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
-export const AuthModal: React.FC = () => {
-  const {
-    isAuthModalOpen,
-    authModalMode,
-    closeAuthModal,
-    loginWithEmail,
-    registerWithEmail,
-    resetPassword,
-    enterAsGuest,
-    loading,
-  } = useAuth();
+export const LoginScreen: React.FC = () => {
+  const { loginWithEmail, registerWithEmail, resetPassword, enterAsGuest, loading } = useAuth();
 
-  const [mode, setMode] = useState<'login' | 'register' | 'forgot'>(authModalMode);
+  const [mode, setMode] = useState<'login' | 'register' | 'forgot'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
-
-  // Sincronizar modo inicial con el contexto
-  useEffect(() => {
-    setMode(authModalMode);
-    setError(null);
-    setSuccessMessage(null);
-  }, [authModalMode, isAuthModalOpen]);
-
-  // Cerrar con tecla Escape
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        closeAuthModal();
-      }
-    };
-    if (isAuthModalOpen) {
-      window.addEventListener('keydown', handleKeyDown);
-    }
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isAuthModalOpen, closeAuthModal]);
-
-  if (!isAuthModalOpen) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -101,54 +70,22 @@ export const AuthModal: React.FC = () => {
   };
 
   return (
-    <div
-      onClick={(e) => {
-        if (e.target === e.currentTarget) closeAuthModal();
-      }}
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150"
-    >
-      <div className="relative w-full max-w-md rounded-3xl border border-slate-200 bg-white shadow-2xl overflow-hidden flex flex-col">
-        {/* Cabecera Institucional */}
-        <div className="relative bg-gradient-to-tr from-slate-900 via-indigo-950 to-indigo-900 p-6 text-white overflow-hidden">
-          <div className="absolute top-0 right-0 -mt-4 -mr-4 h-24 w-24 rounded-full bg-emerald-500/20 blur-xl"></div>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2.5">
-              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-emerald-500 text-white shadow-lg shadow-emerald-500/30">
-                <Calendar className="w-5 h-5" />
-              </div>
-              <div>
-                <h2 className="text-sm font-bold tracking-tight flex items-center gap-1.5">
-                  Planeador de Eventos
-                  <span className="rounded bg-emerald-400/20 text-emerald-300 px-1.5 py-0.5 text-[10px] font-bold border border-emerald-400/30">
-                    UdeA
-                  </span>
-                </h2>
-                <p className="text-xs text-slate-300 font-medium mt-0.5">
-                  Facultad de Medicina
-                </p>
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                closeAuthModal();
-              }}
-              className="p-2 text-slate-300 hover:text-white hover:bg-white/10 rounded-xl transition-colors cursor-pointer"
-              aria-label="Cerrar ventana"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
+    <div className="min-h-screen w-screen flex flex-col justify-center items-center bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-950 p-4 relative overflow-hidden">
+      {/* Luces de fondo decorativas */}
+      <div className="absolute top-1/4 -left-20 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+      <div className="absolute bottom-1/4 -right-20 w-96 h-96 bg-indigo-500/15 rounded-full blur-3xl pointer-events-none"></div>
 
-          <div className="mt-4">
-            <p className="text-xs text-slate-300 leading-relaxed">
-              {mode === 'login' && 'Ingresa con tu correo y contraseña institucional para gestionar eventos.'}
-              {mode === 'register' && 'Crea tu cuenta institucional para solicitar permisos de gestor.'}
-              {mode === 'forgot' && 'Ingresa tu correo para recuperar el acceso a tu cuenta.'}
-            </p>
+      <div className="relative w-full max-w-md rounded-3xl border border-slate-700/60 bg-white/95 backdrop-blur-xl shadow-2xl overflow-hidden">
+        {/* Cabecera Institucional UdeA */}
+        <div className="bg-gradient-to-r from-emerald-800 via-emerald-700 to-indigo-900 p-6 text-white text-center relative">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 shadow-lg text-emerald-300 mb-3">
+            <Calendar className="w-7 h-7" />
           </div>
+          <span className="inline-block rounded-full bg-emerald-400/20 px-2.5 py-0.5 text-[11px] font-bold text-emerald-200 border border-emerald-300/30 mb-1">
+            Universidad de Antioquia
+          </span>
+          <h1 className="text-lg font-bold tracking-tight">Planeador de Eventos</h1>
+          <p className="text-xs text-emerald-100 font-medium">Facultad de Medicina</p>
         </div>
 
         {/* Pestañas de Cambio de Modo */}
@@ -159,6 +96,7 @@ export const AuthModal: React.FC = () => {
               onClick={() => {
                 setMode('login');
                 setError(null);
+                setSuccessMessage(null);
               }}
               className={`py-3 text-center transition-all ${
                 mode === 'login'
@@ -173,6 +111,7 @@ export const AuthModal: React.FC = () => {
               onClick={() => {
                 setMode('register');
                 setError(null);
+                setSuccessMessage(null);
               }}
               className={`py-3 text-center transition-all ${
                 mode === 'register'
@@ -187,6 +126,19 @@ export const AuthModal: React.FC = () => {
 
         {/* Formulario */}
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          <div className="text-center">
+            <h2 className="text-sm font-bold text-slate-800">
+              {mode === 'login' && 'Ingreso al Sistema'}
+              {mode === 'register' && 'Crear Cuenta Institucional'}
+              {mode === 'forgot' && 'Recuperar Contraseña'}
+            </h2>
+            <p className="text-xs text-slate-500 mt-0.5">
+              {mode === 'login' && 'Ingresa con tu correo y contraseña'}
+              {mode === 'register' && 'Regístrate para solicitar permisos de gestor'}
+              {mode === 'forgot' && 'Te enviaremos un correo con las instrucciones'}
+            </p>
+          </div>
+
           {error && (
             <div className="flex items-start gap-2.5 rounded-2xl bg-rose-50 border border-rose-200 p-3 text-xs text-rose-700">
               <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-rose-600" />
@@ -278,7 +230,7 @@ export const AuthModal: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
                 >
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
@@ -295,12 +247,12 @@ export const AuthModal: React.FC = () => {
             {loading ? (
               <span className="flex items-center justify-center gap-2">
                 <span className="h-3.5 w-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
-                Verificando...
+                Verificando credenciales...
               </span>
             ) : mode === 'login' ? (
               'Ingresar al Planeador'
             ) : mode === 'register' ? (
-              'Enviar Solicitud de Registro'
+              'Crear Cuenta y Solicitar Acceso'
             ) : (
               'Enviar Enlace de Recuperación'
             )}
@@ -320,13 +272,11 @@ export const AuthModal: React.FC = () => {
             </button>
           )}
 
-          {/* Opción de continuar como visitante */}
+          {/* Opción de entrar como visitante sin iniciar sesión */}
           <div className="pt-2 border-t border-slate-100 text-center">
             <button
               type="button"
-              onClick={() => {
-                enterAsGuest();
-              }}
+              onClick={enterAsGuest}
               className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600 hover:text-indigo-600 transition-colors py-1 cursor-pointer"
             >
               <span>Consultar calendario como visitante (Solo Lectura)</span>
@@ -335,6 +285,10 @@ export const AuthModal: React.FC = () => {
           </div>
         </form>
       </div>
+
+      <p className="mt-4 text-[11px] text-slate-400 text-center">
+        Facultad de Medicina • Universidad de Antioquia • Medellín, Colombia
+      </p>
     </div>
   );
 };

@@ -18,11 +18,12 @@ import { PersonModal } from './components/people/PersonModal';
 import { SimulatedEmailModal } from './components/requests/SimulatedEmailModal';
 import { UserManagementView } from './components/users/UserManagementView';
 import { AuthModal } from './components/auth/AuthModal';
+import { LoginScreen } from './components/auth/LoginScreen';
 import { EventEntity, Space, Person, ParticipationRequest } from './types';
 import confetti from 'canvas-confetti';
 
 const MainApp: React.FC = () => {
-  const { user, canEdit, isAdmin } = useAuth();
+  const { user, isGuest, canEdit, isAdmin } = useAuth();
   const {
     events,
     spaces,
@@ -73,7 +74,7 @@ const MainApp: React.FC = () => {
   const handleOpenCreateEvent = (preset?: { date?: string; time?: string; spaceId?: string }) => {
     if (!canEdit) {
       if (!user) {
-        alert('Modo Consulta Pública:\n\nCualquier persona puede ver la programación del calendario. Para crear o editar eventos, inicia sesión con Google y solicita autorización al Administrador.');
+        alert('Modo Consulta Pública:\n\nCualquier persona puede ver la programación del calendario. Para crear o editar eventos, inicia sesión con tu cuenta y solicita autorización al Administrador.');
       } else {
         alert('Cuenta en Modo Solo Lectura:\n\nTu solicitud de acceso está pendiente de aprobación por el Administrador. Solo usuarios aprobados como Gestores o Administradores pueden registrar eventos.');
       }
@@ -139,6 +140,11 @@ const MainApp: React.FC = () => {
     setActiveTab(tab);
     setActiveTabFilter(filter);
   };
+
+  // Si no ha iniciado sesión ni ha elegido continuar como visitante, mostrar la pantalla de Login
+  if (!user && !isGuest) {
+    return <LoginScreen />;
+  }
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-slate-50">

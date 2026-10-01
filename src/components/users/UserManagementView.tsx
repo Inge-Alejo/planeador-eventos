@@ -134,7 +134,7 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
           <table className="w-full text-left text-xs text-slate-700">
             <thead className="bg-slate-50/75 border-b border-slate-200 text-[11px] font-bold uppercase tracking-wider text-slate-400">
               <tr>
-                <th className="py-3.5 px-4">Usuario Google</th>
+                <th className="py-3.5 px-4">Usuario</th>
                 <th className="py-3.5 px-4">Correo Institucional</th>
                 <th className="py-3.5 px-4">Rol Asignado</th>
                 <th className="py-3.5 px-4">Estado de Acceso</th>

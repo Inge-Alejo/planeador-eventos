@@ -1,13 +1,12 @@
 // Contexto de Autenticación con Usuario y Contraseña, Aprobación de Usuarios y RBAC
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { UserProfile, UserRole, UserAccountStatus } from '../types';
-import { auth, googleProvider, db, isFirebaseConfigured } from '../lib/firebase';
+import { auth, db, isFirebaseConfigured } from '../lib/firebase';
 import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   sendPasswordResetEmail,
   updateProfile,
-  signInWithPopup,
   signOut as fbSignOut,
   onAuthStateChanged,
 } from 'firebase/auth';
@@ -20,12 +19,11 @@ interface AuthContextType {
   canEdit: boolean;
   isPending: boolean;
   isReadOnly: boolean;
+  isGuest: boolean;
   loginWithEmail: (email: string, pass: string) => Promise<void>;
   registerWithEmail: (email: string, pass: string, displayName: string) => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
-  loginWithGoogle: () => Promise<void>;
-  loginAsDemoAdmin: () => void;
-  loginAsDemoUser: () => void;
+  enterAsGuest: () => void;
   switchRole: (newRole: UserRole) => void;
   logout: () => Promise<void>;
   isFirebaseActive: boolean;
@@ -38,6 +36,7 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const USER_STORAGE_KEY = 'eventflow_user';
+const GUEST_STORAGE_KEY = 'eventflow_is_guest';
 
 // Correos administradores configurables por entorno
 const ADMIN_EMAILS: string[] = (
@@ -49,6 +48,7 @@ const ADMIN_EMAILS: string[] = (
   .filter(Boolean);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  // Estado inicial siempre limpio: cada usuario/navegador tiene su propia sesión
   const [user, setUser] = useState<UserProfile | null>(() => {
     if (typeof window === 'undefined') return null;
     const saved = localStorage.getItem(USER_STORAGE_KEY);
@@ -59,19 +59,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return null;
       }
     }
-    // Usuario inicial demo admin si no hay sesión previa
-    return {
-      uid: 'admin-root',
-      displayName: 'Coordinación TIC (Admin)',
-      email: 'proyectostic.med@udea.edu.co',
-      role: 'administrador',
-      status: 'aprobado',
-      createdAt: new Date().toISOString(),
-      lastLogin: new Date().toISOString(),
-    };
+    return null;
   });
 
-  const [loading, setLoading] = useState<boolean>(false);
+  const [isGuest, setIsGuest] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    return localStorage.getItem(GUEST_STORAGE_KEY) === 'true';
+  });
+
+  const [loading, setLoading] = useState<boolean>(true);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [authModalMode, setAuthModalMode] = useState<'login' | 'register'>('login');
 
@@ -81,6 +77,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const closeAuthModal = () => {
+    setIsAuthModalOpen(false);
+  };
+
+  const enterAsGuest = () => {
+    setIsGuest(true);
+    localStorage.setItem(GUEST_STORAGE_KEY, 'true');
     setIsAuthModalOpen(false);
   };
 
@@ -97,8 +99,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           // Verificar si el correo es Admin Raíz
           const isRootAdmin =
             ADMIN_EMAILS.includes(userEmail) ||
-            userEmail === 'proyectostic.med@udea.edu.co' ||
-            ADMIN_EMAILS.length === 0;
+            userEmail === 'proyectostic.med@udea.edu.co';
 
           try {
             const snap = await getDoc(userDocRef);
@@ -123,7 +124,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             } else {
               const data = snap.data() as UserProfile;
               // Si el email es admin y no tenía el rol, promoverlo
-              if (isRootAdmin && data.role !== 'administrador') {
+              if (isRootAdmin && (data.role !== 'administrador' || data.status !== 'aprobado')) {
                 data.role = 'administrador';
                 data.status = 'aprobado';
                 await setDoc(userDocRef, { role: 'administrador', status: 'aprobado' }, { merge: true });
@@ -145,14 +146,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             console.error('Error sincronizando perfil en Firestore:', err);
           }
         } else {
+          // No hay usuario autenticado en este navegador
           if (unsubscribeUserDoc) unsubscribeUserDoc();
+          setUser(null);
+          localStorage.removeItem(USER_STORAGE_KEY);
         }
+        setLoading(false);
       });
 
       return () => {
         unsubAuth();
         if (unsubscribeUserDoc) unsubscribeUserDoc();
       };
+    } else {
+      setLoading(false);
     }
   }, []);
 
@@ -181,6 +188,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setUser(demoProfile);
         localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(demoProfile));
       }
+      setIsGuest(false);
+      localStorage.removeItem(GUEST_STORAGE_KEY);
       setIsAuthModalOpen(false);
     } finally {
       setLoading(false);
@@ -230,6 +239,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setUser(demoProfile);
         localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(demoProfile));
       }
+      setIsGuest(false);
+      localStorage.removeItem(GUEST_STORAGE_KEY);
       setIsAuthModalOpen(false);
     } finally {
       setLoading(false);
@@ -243,52 +254,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } else {
       alert('Se ha enviado el enlace de restablecimiento a ' + email);
     }
-  };
-
-  // Iniciar con Google (opcional)
-  const loginWithGoogle = async () => {
-    setLoading(true);
-    try {
-      if (isFirebaseConfigured && auth && googleProvider) {
-        await signInWithPopup(auth, googleProvider);
-      } else {
-        loginAsDemoAdmin();
-      }
-      setIsAuthModalOpen(false);
-    } catch (err: any) {
-      console.error('Error en Google Sign-In:', err);
-      alert('Error al iniciar sesión: ' + (err.message || 'Verifica la consola'));
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const loginAsDemoAdmin = () => {
-    const adminUser: UserProfile = {
-      uid: 'admin-root',
-      displayName: 'Coordinación TIC (Admin)',
-      email: 'proyectostic.med@udea.edu.co',
-      role: 'administrador',
-      status: 'aprobado',
-      createdAt: new Date().toISOString(),
-      lastLogin: new Date().toISOString(),
-    };
-    setUser(adminUser);
-    localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(adminUser));
-  };
-
-  const loginAsDemoUser = () => {
-    const regularUser: UserProfile = {
-      uid: 'user-demo',
-      displayName: 'Dra. Sofía Restrepo (Usuario)',
-      email: 'sofia.restrepo@udea.edu.co',
-      role: 'lector',
-      status: 'pendiente',
-      createdAt: new Date().toISOString(),
-      lastLogin: new Date().toISOString(),
-    };
-    setUser(regularUser);
-    localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(regularUser));
   };
 
   const switchRole = (newRole: UserRole) => {
@@ -311,7 +276,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await fbSignOut(auth);
     }
     setUser(null);
+    setIsGuest(false);
     localStorage.removeItem(USER_STORAGE_KEY);
+    localStorage.removeItem(GUEST_STORAGE_KEY);
   };
 
   // Permisos granulares
@@ -329,12 +296,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         canEdit,
         isPending,
         isReadOnly,
+        isGuest,
         loginWithEmail,
         registerWithEmail,
         resetPassword,
-        loginWithGoogle,
-        loginAsDemoAdmin,
-        loginAsDemoUser,
+        enterAsGuest,
         switchRole,
         logout,
         isFirebaseActive: isFirebaseConfigured,
