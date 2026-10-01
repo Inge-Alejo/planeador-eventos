@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { X, UserPlus, Mail, Briefcase, Building } from 'lucide-react';
 import { Person } from '../../types';
 import { useAuth } from '../../context/AuthContext';
+import { useDismissable } from '../../hooks/useDismissable';
 
 interface PersonModalProps {
   isOpen: boolean;
@@ -48,6 +49,11 @@ export const PersonModal: React.FC<PersonModalProps> = ({
     setError(null);
   }, [personToEdit, isOpen]);
 
+  const { contentRef, handleBackdropClick } = useDismissable({
+    onDismiss: onClose,
+    isOpen,
+  });
+
   if (!isOpen) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -85,15 +91,24 @@ export const PersonModal: React.FC<PersonModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-in fade-in duration-150">
-      <div className="relative w-full max-w-lg rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl">
+    <div
+      onClick={handleBackdropClick}
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-in fade-in duration-150"
+    >
+      <div
+        ref={contentRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="modal-person-title"
+        className="relative w-full max-w-lg rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl"
+      >
         <div className="flex items-center justify-between border-b border-slate-100 pb-4">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-600 text-white">
               <UserPlus className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-slate-900">
+              <h2 id="modal-person-title" className="text-base font-bold text-slate-900">
                 {personToEdit ? 'Editar Información de la Persona' : 'Registrar Nueva Persona'}
               </h2>
               <p className="text-xs text-slate-500">Agrega integrantes para convocatorias y eventos</p>

@@ -19,6 +19,7 @@ import {
 import { EventEntity, Space, Person, ParticipationRequest, AuditLog } from '../../types';
 import { formatFriendlyDate, format12Hour } from '../../lib/timezone';
 import { useAuth } from '../../context/AuthContext';
+import { useDismissable } from '../../hooks/useDismissable';
 
 interface EventDetailDrawerProps {
   event: EventEntity | null;
@@ -44,6 +45,11 @@ export const EventDetailDrawer: React.FC<EventDetailDrawerProps> = ({
   onOpenSimulatedEmail,
 }) => {
   const { isAdmin } = useAuth();
+  const { contentRef, handleBackdropClick } = useDismissable({
+    onDismiss: onClose,
+    isOpen: Boolean(event),
+  });
+
   if (!event) return null;
 
   const space = spaces.find((s) => s.id === event.spaceId);
@@ -76,8 +82,17 @@ export const EventDetailDrawer: React.FC<EventDetailDrawerProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-slate-900/40 backdrop-blur-xs animate-in fade-in duration-150">
-      <div className="relative w-full max-w-xl h-full bg-white shadow-2xl flex flex-col overflow-hidden animate-in slide-in-from-right duration-200">
+    <div
+      onClick={handleBackdropClick}
+      className="fixed inset-0 z-50 flex justify-end bg-slate-900/40 backdrop-blur-xs animate-in fade-in duration-150"
+    >
+      <div
+        ref={contentRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Detalle del Evento"
+        className="relative w-full max-w-xl h-full bg-white shadow-2xl flex flex-col overflow-hidden animate-in slide-in-from-right duration-200"
+      >
         {/* Header Drawer */}
         <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4 bg-slate-50/50">
           <div className="flex items-center gap-2">

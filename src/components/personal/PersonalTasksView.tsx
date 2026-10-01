@@ -34,6 +34,7 @@ import {
 } from '../../lib/timezone';
 import { generateGoogleCalendarUrl, generateOutlookCalendarUrl } from '../../services/emailService';
 import confetti from 'canvas-confetti';
+import { useDismissable } from '../../hooks/useDismissable';
 
 interface PersonalTasksViewProps {
   user: { uid: string; email: string; displayName?: string } | null;
@@ -110,6 +111,11 @@ export const PersonalTasksView: React.FC<PersonalTasksViewProps> = ({
   const [newDueTime, setNewDueTime] = useState('12:00');
   const [newPriority, setNewPriority] = useState<PersonalTaskPriority>('media');
   const [newCategory, setNewCategory] = useState<'recordatorio' | 'tarea' | 'seguimiento' | 'evento'>('recordatorio');
+
+  const { contentRef: taskModalRef, handleBackdropClick: handleTaskModalBackdropClick } = useDismissable({
+    onDismiss: () => setIsNewTaskModalOpen(false),
+    isOpen: isNewTaskModalOpen,
+  });
 
   // Filtrado de tareas
   const filteredTasks = useMemo(() => {
@@ -601,10 +607,19 @@ export const PersonalTasksView: React.FC<PersonalTasksViewProps> = ({
 
       {/* Modal para Crear Nueva Tarea Personal */}
       {isNewTaskModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden animate-scale-up">
+        <div
+          onClick={handleTaskModalBackdropClick}
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in"
+        >
+          <div
+            ref={taskModalRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="modal-personal-task-title"
+            className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden animate-scale-up"
+          >
             <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
-              <h3 className="font-bold text-slate-800 text-base flex items-center gap-2">
+              <h3 id="modal-personal-task-title" className="font-bold text-slate-800 text-base flex items-center gap-2">
                 <CheckSquare className="w-5 h-5 text-emerald-600" />
                 <span>Nuevo Recordatorio Personal</span>
               </h3>

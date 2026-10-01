@@ -24,6 +24,7 @@ import {
 } from '../../services/emailService';
 import { useAuth } from '../../context/AuthContext';
 import confetti from 'canvas-confetti';
+import { useDismissable } from '../../hooks/useDismissable';
 
 interface SimulatedEmailModalProps {
   request: ParticipationRequest | null;
@@ -42,6 +43,11 @@ export const SimulatedEmailModal: React.FC<SimulatedEmailModalProps> = ({
   const [copied, setCopied] = useState(false);
   const [isSendingAuto, setIsSendingAuto] = useState(false);
   const [autoSendResult, setAutoSendResult] = useState<{ success: boolean; message: string } | null>(null);
+
+  const { contentRef, handleBackdropClick } = useDismissable({
+    onDismiss: onClose,
+    isOpen: Boolean(request),
+  });
 
   if (!request) return null;
 
@@ -158,8 +164,17 @@ Planeador de Eventos Académicos`;
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150">
-      <div className="relative w-full max-w-xl rounded-3xl border border-slate-200 bg-white shadow-2xl overflow-hidden flex flex-col">
+    <div
+      onClick={handleBackdropClick}
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150"
+    >
+      <div
+        ref={contentRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="modal-simulated-email-title"
+        className="relative w-full max-w-xl rounded-3xl border border-slate-200 bg-white shadow-2xl overflow-hidden flex flex-col"
+      >
         {/* Cabecera del Cliente de Correo Simulado */}
         <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4 bg-slate-100/80">
           <div className="flex items-center gap-2.5">

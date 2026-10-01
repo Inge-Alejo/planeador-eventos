@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { X, Building2, Layers, MapPin, Users, Sparkles } from 'lucide-react';
 import { Space, SpaceType, SpaceStatus } from '../../types';
 import { useAuth } from '../../context/AuthContext';
+import { useDismissable } from '../../hooks/useDismissable';
 
 interface SpaceModalProps {
   isOpen: boolean;
@@ -49,6 +50,11 @@ export const SpaceModal: React.FC<SpaceModalProps> = ({
     }
   }, [spaceToEdit, isOpen]);
 
+  const { contentRef, handleBackdropClick } = useDismissable({
+    onDismiss: onClose,
+    isOpen,
+  });
+
   if (!isOpen) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -86,15 +92,24 @@ export const SpaceModal: React.FC<SpaceModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-in fade-in duration-150">
-      <div className="relative w-full max-w-lg rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl">
+    <div
+      onClick={handleBackdropClick}
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-in fade-in duration-150"
+    >
+      <div
+        ref={contentRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="modal-space-title"
+        className="relative w-full max-w-lg rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl"
+      >
         <div className="flex items-center justify-between border-b border-slate-100 pb-4">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-600 text-white">
               <Building2 className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-slate-900">
+              <h2 id="modal-space-title" className="text-base font-bold text-slate-900">
                 {spaceToEdit ? 'Editar Espacio Físico' : 'Nuevo Espacio Físico'}
               </h2>
               <p className="text-xs text-slate-500">Configura capacidad y especificaciones técnicas</p>

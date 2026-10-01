@@ -16,6 +16,7 @@ import {
   Activity,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { useDismissable } from '../../hooks/useDismissable';
 
 export type ActiveTab =
   | 'dashboard'
@@ -53,6 +54,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onCloseMobile,
 }) => {
   const { isAdmin } = useAuth();
+
+  useDismissable({
+    onDismiss: onCloseMobile,
+    isOpen: isOpenMobile,
+    closeOnEscape: true,
+    closeOnOutsideClick: false,
+    lockScroll: true,
+  });
 
   const navItems = [
     { id: 'dashboard' as ActiveTab, label: 'Dashboard', icon: LayoutDashboard },

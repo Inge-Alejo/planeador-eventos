@@ -15,6 +15,7 @@ import {
 import { EventEntity, Space, Person, EventType, EventStatus, PeopleGroup } from '../../types';
 import { detectConflicts } from '../../services/conflictEngine';
 import { calculateDuration, format12Hour, getBogotaToday } from '../../lib/timezone';
+import { useDismissable } from '../../hooks/useDismissable';
 
 interface EventModalProps {
   isOpen: boolean;
@@ -136,6 +137,11 @@ export const EventModal: React.FC<EventModalProps> = ({
     existingEvents,
   ]);
 
+  const { contentRef, handleBackdropClick } = useDismissable({
+    onDismiss: onClose,
+    isOpen,
+  });
+
   if (!isOpen) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -197,8 +203,17 @@ export const EventModal: React.FC<EventModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-in fade-in duration-150">
-      <div className="relative w-full max-w-2xl max-h-[90vh] flex flex-col rounded-3xl border border-slate-200 bg-white shadow-2xl overflow-hidden">
+    <div
+      onClick={handleBackdropClick}
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-in fade-in duration-150"
+    >
+      <div
+        ref={contentRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="modal-event-title"
+        className="relative w-full max-w-2xl max-h-[90vh] flex flex-col rounded-3xl border border-slate-200 bg-white shadow-2xl overflow-hidden"
+      >
         {/* Header Modal */}
         <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4 bg-slate-50/50">
           <div className="flex items-center gap-3">
@@ -206,7 +221,7 @@ export const EventModal: React.FC<EventModalProps> = ({
               <Calendar className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-slate-900">
+              <h2 id="modal-event-title" className="text-base font-bold text-slate-900">
                 {eventToEdit ? 'Editar Evento Proyectado' : 'Programar Nuevo Evento'}
               </h2>
               <p className="text-xs text-slate-500">

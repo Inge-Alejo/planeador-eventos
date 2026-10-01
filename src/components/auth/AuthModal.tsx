@@ -13,6 +13,7 @@ import {
   ArrowRight,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { useDismissable } from '../../hooks/useDismissable';
 
 export const AuthModal: React.FC = () => {
   const {
@@ -41,18 +42,10 @@ export const AuthModal: React.FC = () => {
     setSuccessMessage(null);
   }, [authModalMode, isAuthModalOpen]);
 
-  // Cerrar con tecla Escape
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        closeAuthModal();
-      }
-    };
-    if (isAuthModalOpen) {
-      window.addEventListener('keydown', handleKeyDown);
-    }
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isAuthModalOpen, closeAuthModal]);
+  const { contentRef, handleBackdropClick } = useDismissable({
+    onDismiss: closeAuthModal,
+    isOpen: isAuthModalOpen,
+  });
 
   if (!isAuthModalOpen) return null;
 
@@ -102,12 +95,16 @@ export const AuthModal: React.FC = () => {
 
   return (
     <div
-      onClick={(e) => {
-        if (e.target === e.currentTarget) closeAuthModal();
-      }}
+      onClick={handleBackdropClick}
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150"
     >
-      <div className="relative w-full max-w-md rounded-3xl border border-slate-200 bg-white shadow-2xl overflow-hidden flex flex-col">
+      <div
+        ref={contentRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="modal-auth-title"
+        className="relative w-full max-w-md rounded-3xl border border-slate-200 bg-white shadow-2xl overflow-hidden flex flex-col"
+      >
         {/* Cabecera Institucional */}
         <div className="relative bg-gradient-to-tr from-slate-900 via-indigo-950 to-indigo-900 p-6 text-white overflow-hidden">
           <div className="absolute top-0 right-0 -mt-4 -mr-4 h-24 w-24 rounded-full bg-emerald-500/20 blur-xl"></div>
