@@ -683,6 +683,12 @@ export function subscribeToGroups(callback: (groups: PeopleGroup[]) => void): ()
 }
 
 export function subscribeToPersonalTasks(userId: string, callback: (tasks: PersonalTask[]) => void): () => void {
+  // Mantener listener local siempre activo para que cualquier mutación se refleje en vivo instantáneamente
+  const localListener: Listener<PersonalTask[]> = (tasks) => {
+    callback(tasks.filter((t) => t.userId === userId));
+  };
+  personalTaskListeners.add(localListener);
+
   if (isFirebaseConfigured && db) {
     const firestore = db;
     const q = query(collection(firestore, 'personal_tasks'), where('userId', '==', userId));
@@ -691,6 +697,7 @@ export function subscribeToPersonalTasks(userId: string, callback: (tasks: Perso
       (snapshot) => {
         const data = snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as PersonalTask));
         callback(data);
+        save(STORAGE_KEYS.PERSONAL_TASKS, data);
       },
       (error) => {
         console.warn('Firestore personal_tasks subscription error, fallback local:', error);
@@ -698,15 +705,15 @@ export function subscribeToPersonalTasks(userId: string, callback: (tasks: Perso
         callback(allTasks.filter((t) => t.userId === userId));
       }
     );
-    return unsub;
+    return () => {
+      personalTaskListeners.delete(localListener);
+      unsub();
+    };
   }
+
   const allTasks = load<PersonalTask[]>(STORAGE_KEYS.PERSONAL_TASKS, initialPersonalTasks);
   callback(allTasks.filter((t) => t.userId === userId));
-  const listener: Listener<PersonalTask[]> = (tasks) => {
-    callback(tasks.filter((t) => t.userId === userId));
-  };
-  personalTaskListeners.add(listener);
-  return () => personalTaskListeners.delete(listener);
+  return () => personalTaskListeners.delete(localListener);
 }
 
 export function subscribeToRequests(callback: (reqs: ParticipationRequest[]) => void): () => void {
@@ -1267,34 +1274,51 @@ export async function savePersonalTask(
   return id;
 }
 
-export async function togglePersonalTask(taskId: string): Promise<void> {
+export async function togglePersonalTask(
+  taskId: string,
+  targetStatus?: 'pendiente' | 'completada'
+): Promise<void> {
   const now = new Date().toISOString();
+  const current = load<PersonalTask[]>(STORAGE_KEYS.PERSONAL_TASKS, initialPersonalTasks);
+  const target = current.find((t) => t.id === taskId);
+
+  let nextStatus: 'pendiente' | 'completada';
+  if (targetStatus) {
+    nextStatus = targetStatus;
+  } else if (target) {
+    nextStatus = target.status === 'completada' ? 'pendiente' : 'completada';
+  } else {
+    nextStatus = 'completada';
+  }
+
+  if (target) {
+    target.status = nextStatus;
+    target.completedAt = nextStatus === 'completada' ? now : undefined;
+    save(STORAGE_KEYS.PERSONAL_TASKS, current);
+  }
+  // Notificar a todos los listeners inmediatamente
+  personalTaskListeners.forEach((fn) => fn(current));
+
   if (isFirebaseConfigured && db) {
     try {
       const taskRef = doc(db, 'personal_tasks', taskId);
-      const currentTasks = load<PersonalTask[]>(STORAGE_KEYS.PERSONAL_TASKS, initialPersonalTasks);
-      const localItem = currentTasks.find((t) => t.id === taskId);
-      const nextStatus = localItem?.status === 'completada' ? 'pendiente' : 'completada';
       await updateDoc(taskRef, {
         status: nextStatus,
         completedAt: nextStatus === 'completada' ? now : null,
-      }).catch(() => {});
+      });
     } catch (err) {
       console.error('Error alternando tarea en Firestore:', err);
     }
   }
-
-  const current = load<PersonalTask[]>(STORAGE_KEYS.PERSONAL_TASKS, initialPersonalTasks);
-  const target = current.find((t) => t.id === taskId);
-  if (target) {
-    target.status = target.status === 'completada' ? 'pendiente' : 'completada';
-    target.completedAt = target.status === 'completada' ? now : undefined;
-    save(STORAGE_KEYS.PERSONAL_TASKS, current);
-    personalTaskListeners.forEach((fn) => fn(current));
-  }
 }
 
 export async function deletePersonalTask(taskId: string): Promise<void> {
+  const current = load<PersonalTask[]>(STORAGE_KEYS.PERSONAL_TASKS, initialPersonalTasks);
+  const filtered = current.filter((t) => t.id !== taskId);
+  save(STORAGE_KEYS.PERSONAL_TASKS, filtered);
+  // Notificar a todos los listeners inmediatamente
+  personalTaskListeners.forEach((fn) => fn(filtered));
+
   if (isFirebaseConfigured && db) {
     try {
       await deleteDoc(doc(db, 'personal_tasks', taskId));
@@ -1302,10 +1326,6 @@ export async function deletePersonalTask(taskId: string): Promise<void> {
       console.error('Error eliminando tarea en Firestore:', err);
     }
   }
-  const current = load<PersonalTask[]>(STORAGE_KEYS.PERSONAL_TASKS, initialPersonalTasks);
-  const filtered = current.filter((t) => t.id !== taskId);
-  save(STORAGE_KEYS.PERSONAL_TASKS, filtered);
-  personalTaskListeners.forEach((fn) => fn(filtered));
 }
 
 // Operaciones de Solicitud de Participación y Confirmación por Token

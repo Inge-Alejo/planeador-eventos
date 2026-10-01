@@ -157,7 +157,7 @@ export const PersonalTasksView: React.FC<PersonalTasksViewProps> = ({
         origin: { y: 0.7 },
       });
     }
-    await onToggleTask(task.id, task.status);
+    await onToggleTask(task.id, nextStatus);
   };
 
   const handleCreateTask = async (e: React.FormEvent) => {

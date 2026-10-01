@@ -70,11 +70,8 @@ export function useEventFlow(currentUserId?: string) {
     const unsubUsers = subscribeToUsers(setUsers);
 
     let unsubPersonalTasks = () => {};
-    if (currentUserId) {
-      unsubPersonalTasks = subscribeToPersonalTasks(currentUserId, setPersonalTasks);
-    } else {
-      setPersonalTasks([]);
-    }
+    const effectiveUserId = currentUserId || 'admin-1';
+    unsubPersonalTasks = subscribeToPersonalTasks(effectiveUserId, setPersonalTasks);
 
     setLoading(false);
 
@@ -185,6 +182,59 @@ export function useEventFlow(currentUserId?: string) {
     return users.filter((u) => u.status === 'pendiente').length;
   }, [users]);
 
+  // Handlers reactivos y optimistas en vivo para Tareas Personales y Recordatorios
+  const handleTogglePersonalTask = async (
+    taskId: string,
+    targetStatus?: 'pendiente' | 'completada'
+  ) => {
+    // 1. Actualización optimista inmediata en React State (< 1ms)
+    setPersonalTasks((prev) =>
+      prev.map((t) => {
+        if (t.id !== taskId) return t;
+        const nextStatus = targetStatus
+          ? targetStatus
+          : t.status === 'completada'
+          ? 'pendiente'
+          : 'completada';
+        return {
+          ...t,
+          status: nextStatus,
+          completedAt: nextStatus === 'completada' ? new Date().toISOString() : undefined,
+        };
+      })
+    );
+    // 2. Persistencia en store y Firestore
+    await togglePersonalTask(taskId, targetStatus);
+  };
+
+  const handleDeletePersonalTask = async (taskId: string) => {
+    // 1. Actualización optimista inmediata en React State (< 1ms)
+    setPersonalTasks((prev) => prev.filter((t) => t.id !== taskId));
+    // 2. Persistencia en store y Firestore
+    await deletePersonalTask(taskId);
+  };
+
+  const handleSavePersonalTask = async (
+    task: Omit<PersonalTask, 'id' | 'createdAt'> & { id?: string; createdAt?: string }
+  ) => {
+    const tempId = task.id || `task-${Date.now()}`;
+    const newTask: PersonalTask = {
+      ...task,
+      id: tempId,
+      createdAt: task.createdAt || new Date().toISOString(),
+    };
+    setPersonalTasks((prev) => {
+      const idx = prev.findIndex((t) => t.id === tempId);
+      if (idx >= 0) {
+        const copy = [...prev];
+        copy[idx] = newTask;
+        return copy;
+      }
+      return [newTask, ...prev];
+    });
+    return await savePersonalTask(task);
+  };
+
   return {
     events,
     spaces,
@@ -207,9 +257,9 @@ export function useEventFlow(currentUserId?: string) {
     deletePerson,
     saveGroup,
     deleteGroup,
-    savePersonalTask,
-    togglePersonalTask,
-    deletePersonalTask,
+    savePersonalTask: handleSavePersonalTask,
+    togglePersonalTask: handleTogglePersonalTask,
+    deletePersonalTask: handleDeletePersonalTask,
     createParticipationRequest,
     respondToParticipationRequest,
     markNotificationAsRead,

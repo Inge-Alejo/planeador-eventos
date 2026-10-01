@@ -290,7 +290,11 @@ const MainApp: React.FC = () => {
         )}
 
         {/* Área de Trabajo con Scroll */}
-        <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
+        <main
+          className={`flex-1 overflow-y-auto ${
+            activeTab === 'calendario' ? 'p-2 sm:p-3 lg:p-4' : 'p-4 sm:p-6 lg:p-8'
+          }`}
+        >
           {activeTab === 'dashboard' && (
             <DashboardMain
               metrics={metrics}

@@ -61,11 +61,27 @@ service cloud.firestore {
       allow create, update, delete: if isEditorOrAdmin();
     }
 
-    // Tareas Personales (Aislamiento Multi-Tenant por usuario propietario)
+    // Tareas Personales (Aislamiento Multi-Tenant por usuario propietario y administradores)
     match /personal_tasks/{taskId} {
-      allow read, write: if isAuthenticated() && (
+      allow read: if isAuthenticated() && (
+        resource.data.userId == request.auth.uid ||
+        resource.data.userId == request.auth.token.email ||
+        isAdmin()
+      );
+      allow create: if isAuthenticated() && (
         request.resource.data.userId == request.auth.uid ||
-        resource.data.userId == request.auth.uid
+        request.resource.data.userId == request.auth.token.email ||
+        isAdmin()
+      );
+      allow update: if isAuthenticated() && (
+        resource.data.userId == request.auth.uid ||
+        resource.data.userId == request.auth.token.email ||
+        isAdmin()
+      );
+      allow delete: if isAuthenticated() && (
+        resource.data.userId == request.auth.uid ||
+        resource.data.userId == request.auth.token.email ||
+        isAdmin()
       );
     }
 

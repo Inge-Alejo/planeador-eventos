@@ -12,6 +12,8 @@ import {
   Grid3X3,
   Columns,
   CalendarDays,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import { EventEntity, Space, Person, EventType, EventStatus, PeopleGroup } from '../../types';
 import { formatFriendlyDate, formatShortDate, format12Hour, getBogotaToday, timeStringToMinutes } from '../../lib/timezone';
@@ -40,6 +42,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
   const { canEdit } = useAuth();
   const [currentDate, setCurrentDate] = useState<string>(getBogotaToday());
   const [viewMode, setViewMode] = useState<CalendarViewMode>('mes');
+  const [showLegend, setShowLegend] = useState<boolean>(false);
 
   // Filtros interactivos del calendario
   const [filterSpaceId, setFilterSpaceId] = useState<string>('todos');
@@ -349,13 +352,13 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
         </div>
       </div>
 
-      {/* VISTA 1: MES (Completo, responsivo y sin recortes) */}
+      {/* VISTA 1: MES (Completo, responsivo y sin recortes ni scroll excesivo) */}
       {viewMode === 'mes' && (
         <div className="rounded-2xl border border-slate-200/80 bg-white shadow-xs overflow-hidden flex flex-col flex-1">
           <div className="overflow-x-auto min-w-full">
-            <div className="min-w-[700px] flex flex-col flex-1">
+            <div className="min-w-[650px] flex flex-col flex-1">
               {/* Cabecera de días de la semana */}
-              <div className="grid grid-cols-7 border-b border-slate-200 bg-slate-50/70 text-center text-xs font-bold text-slate-600 py-2.5">
+              <div className="grid grid-cols-7 border-b border-slate-200 bg-slate-50/70 text-center text-xs font-bold text-slate-600 py-1.5">
                 <div>Lun</div>
                 <div>Mar</div>
                 <div>Mié</div>
@@ -365,7 +368,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
                 <div className="text-rose-500">Dom</div>
               </div>
 
-              {/* Cuadrícula de 7 columnas */}
+              {/* Cuadrícula de 7 columnas compacta para evitar scroll vertical */}
               <div className="grid grid-cols-7 auto-rows-fr divide-x divide-y divide-slate-100 flex-1">
                 {monthDays.map((d, idx) => {
                   const dayEvents = filteredEvents.filter((e) => e.date === d.dateStr);
@@ -375,15 +378,15 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
                     <div
                       key={idx}
                       onClick={canEdit ? () => onOpenCreateEvent({ date: d.dateStr }) : undefined}
-                      className={`min-h-[115px] sm:min-h-[135px] p-1.5 sm:p-2 flex flex-col justify-between transition-colors ${
+                      className={`min-h-[66px] sm:min-h-[76px] lg:min-h-[84px] p-1 sm:p-1.5 flex flex-col justify-between transition-colors ${
                         canEdit ? 'hover:bg-indigo-50/20 cursor-pointer' : 'cursor-default'
                       } ${!d.isCurrentMonth ? 'bg-slate-50/40 text-slate-300' : 'bg-white'}`}
                     >
                       <div className="flex items-center justify-between">
                         <span
-                          className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold ${
+                          className={`flex h-5 w-5 sm:h-5.5 sm:w-5.5 items-center justify-center rounded-full text-[10px] sm:text-xs font-bold ${
                             isToday
-                              ? 'bg-indigo-600 text-white shadow-sm'
+                              ? 'bg-indigo-600 text-white shadow-xs ring-1 ring-indigo-200'
                               : d.isCurrentMonth
                               ? 'text-slate-700'
                               : 'text-slate-400'
@@ -392,15 +395,15 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
                           {d.dayNumber}
                         </span>
                         {dayEvents.length > 0 && (
-                          <span className="text-[10px] font-bold text-slate-400">
-                            {dayEvents.length} act.
+                          <span className="text-[9px] font-bold text-slate-400">
+                            {dayEvents.length}
                           </span>
                         )}
                       </div>
 
-                      {/* Lista de eventos del día */}
-                      <div className="mt-1 space-y-1 overflow-hidden flex-1">
-                        {dayEvents.slice(0, 3).map((evt) => {
+                      {/* Lista de eventos del día en formato de chips compactos */}
+                      <div className="mt-0.5 space-y-0.5 overflow-hidden flex-1">
+                        {dayEvents.slice(0, 2).map((evt) => {
                           const typeConfig = getEventTypeConfig(evt.type);
                           return (
                             <div
@@ -410,45 +413,29 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
                                 onSelectEvent(evt.id);
                               }}
                               style={{ borderLeftColor: typeConfig.color }}
-                              className="group rounded-md border-l-4 bg-slate-50 hover:bg-slate-100 p-1 text-[11px] shadow-2xs transition-all hover:scale-[1.01] cursor-pointer"
+                              className="group rounded border-l-2 bg-slate-50 hover:bg-indigo-50/60 px-1 py-0.5 text-[10px] transition-all hover:scale-[1.01] cursor-pointer flex items-center justify-between gap-1 shadow-2xs"
+                              title={`${evt.startTime} - ${evt.title} (${typeConfig.label})`}
                             >
-                              <div className="flex items-center justify-between text-[10px] font-semibold text-slate-500">
-                                <div className="flex items-center gap-1 truncate">
-                                  <span
-                                    className="h-1.5 w-1.5 rounded-full shrink-0"
-                                    style={{ backgroundColor: typeConfig.color }}
-                                  />
-                                  <span>{evt.startTime}</span>
-                                </div>
-                                <span className="truncate max-w-[55px] text-slate-400 hidden sm:inline text-[9px]">
-                                  {evt.spaceName}
-                                </span>
-                              </div>
-                              <p className="font-bold text-slate-800 truncate leading-tight group-hover:text-indigo-600 mt-0.5">
+                              <span className="font-semibold text-slate-800 truncate leading-tight group-hover:text-indigo-600">
                                 {evt.title}
-                              </p>
-                              <div className="flex items-center gap-1 mt-0.5">
-                                <span
-                                  className="text-[9px] font-semibold px-1 rounded truncate leading-tight"
-                                  style={{
-                                    color: typeConfig.color,
-                                    backgroundColor: `${typeConfig.color}15`,
-                                  }}
-                                >
-                                  {typeConfig.label}
-                                </span>
-                                {evt.isVirtual && (
-                                  <span className="text-[9px] font-bold px-1 rounded bg-cyan-100 text-cyan-800 leading-tight">
-                                    Virtual
-                                  </span>
-                                )}
-                              </div>
+                              </span>
+                              <span className="font-mono text-[9px] text-slate-400 shrink-0">
+                                {evt.startTime}
+                              </span>
                             </div>
                           );
                         })}
-                        {dayEvents.length > 3 && (
-                          <div className="text-[10px] font-bold text-indigo-600 text-center pt-0.5">
-                            +{dayEvents.length - 3} más
+                        {dayEvents.length > 2 && (
+                          <div
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setCurrentDate(d.dateStr);
+                              setViewMode('dia');
+                            }}
+                            className="text-[9px] font-bold text-indigo-600 hover:text-indigo-800 text-center cursor-pointer hover:underline py-0.5"
+                            title="Ver todos los eventos del día"
+                          >
+                            +{dayEvents.length - 2} más
                           </div>
                         )}
                       </div>
@@ -461,20 +448,20 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
         </div>
       )}
 
-      {/* VISTA 2: SEMANA (7 Días completos desplegados en columnas) */}
+      {/* VISTA 2: SEMANA (7 Días completos desplegados en columnas con altura ajustada) */}
       {viewMode === 'semana' && (
         <div className="rounded-2xl border border-slate-200/80 bg-white shadow-xs overflow-hidden flex flex-col flex-1">
           <div className="overflow-x-auto min-w-full">
-            <div className="min-w-[780px]">
+            <div className="min-w-[750px]">
               {/* Cabecera de 7 días de la semana */}
-              <div className="grid grid-cols-7 border-b border-slate-200 bg-slate-50/80 text-center py-3">
+              <div className="grid grid-cols-7 border-b border-slate-200 bg-slate-50/80 text-center py-2">
                 {weekDays.map((wd) => (
                   <div key={wd.dateStr} className="flex flex-col items-center justify-center">
-                    <span className="text-[11px] font-bold uppercase text-slate-500">{wd.dayName}</span>
+                    <span className="text-[10px] font-bold uppercase text-slate-500">{wd.dayName}</span>
                     <span
-                      className={`mt-1 flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold ${
+                      className={`mt-0.5 flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold ${
                         wd.isToday
-                          ? 'bg-indigo-600 text-white shadow-sm ring-2 ring-indigo-200'
+                          ? 'bg-indigo-600 text-white shadow-xs ring-2 ring-indigo-200'
                           : 'text-slate-800'
                       }`}
                     >
@@ -485,7 +472,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
               </div>
 
               {/* Columnas con eventos de cada día de la semana */}
-              <div className="grid grid-cols-7 divide-x divide-slate-100 min-h-[420px]">
+              <div className="grid grid-cols-7 divide-x divide-slate-100 min-h-[350px]">
                 {weekDays.map((wd) => {
                   const dayEvents = filteredEvents
                     .filter((e) => e.date === wd.dateStr)
@@ -494,13 +481,13 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
                   return (
                     <div
                       key={wd.dateStr}
-                      className={`p-2 flex flex-col justify-between transition-colors ${
+                      className={`p-1.5 flex flex-col justify-between transition-colors ${
                         wd.isToday ? 'bg-indigo-50/20' : 'bg-white'
                       }`}
                     >
-                      <div className="space-y-2 flex-1">
+                      <div className="space-y-1.5 flex-1 overflow-y-auto max-h-[440px] pr-0.5">
                         {dayEvents.length === 0 ? (
-                          <div className="h-full flex flex-col items-center justify-center py-10 text-center text-[11px] text-slate-300">
+                          <div className="h-full flex flex-col items-center justify-center py-8 text-center text-[10px] text-slate-300">
                             <span>Sin actividades</span>
                           </div>
                         ) : (
@@ -511,15 +498,15 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
                                 key={evt.id}
                                 onClick={() => onSelectEvent(evt.id)}
                                 style={{ borderLeftColor: typeConfig.color }}
-                                className="group rounded-lg border-l-4 bg-slate-50 hover:bg-slate-100 p-2 text-xs shadow-2xs transition-all hover:scale-[1.01] cursor-pointer"
+                                className="group rounded-lg border-l-4 bg-slate-50 hover:bg-slate-100 p-1.5 text-xs shadow-2xs transition-all hover:scale-[1.01] cursor-pointer"
                               >
                                 <div className="flex items-center justify-between text-[10px] font-semibold text-slate-500 mb-0.5">
                                   <span className="font-mono">{evt.startTime} - {evt.endTime}</span>
                                 </div>
-                                <p className="font-bold text-slate-900 group-hover:text-indigo-600 truncate leading-snug">
+                                <p className="font-bold text-slate-900 group-hover:text-indigo-600 truncate leading-snug text-[11px]">
                                   {evt.title}
                                 </p>
-                                <p className="text-[10px] text-slate-400 truncate mt-0.5">
+                                <p className="text-[9px] text-slate-400 truncate mt-0.5">
                                   {evt.spaceName}
                                 </p>
                                 <div className="mt-1 flex items-center gap-1">
@@ -548,7 +535,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
                       {canEdit && (
                         <button
                           onClick={() => onOpenCreateEvent({ date: wd.dateStr })}
-                          className="mt-2 w-full flex items-center justify-center gap-1 py-1 rounded-lg border border-dashed border-slate-200 hover:border-indigo-400 hover:bg-indigo-50/50 text-[10px] font-bold text-slate-400 hover:text-indigo-700 transition-colors"
+                          className="mt-1.5 w-full flex items-center justify-center gap-1 py-1 rounded-lg border border-dashed border-slate-200 hover:border-indigo-400 hover:bg-indigo-50/50 text-[10px] font-bold text-slate-400 hover:text-indigo-700 transition-colors"
                           title={`Programar actividad para el ${wd.dayName} ${wd.dayNumber}`}
                         >
                           <Plus className="w-3 h-3" />
@@ -759,53 +746,81 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
         </div>
       )}
 
-      {/* Convención / Leyenda interactiva de Colores por Tipo de Evento */}
-      <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-xs">
-        <div className="flex items-center justify-between mb-2.5">
+      {/* Convención / Leyenda interactiva de Colores por Tipo de Evento (Plegable y Ultra-compacta) */}
+      <div className="rounded-2xl border border-slate-200/80 bg-white p-2.5 sm:p-3 shadow-xs">
+        <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <span className="h-2.5 w-2.5 rounded-full bg-indigo-600" />
+            <span className="h-2 w-2 rounded-full bg-indigo-600" />
             <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
-              Convención de Colores por Tipo de Evento
+              Convención de Colores
             </h4>
-          </div>
-          {filterType !== 'todos' && (
-            <button
-              onClick={() => setFilterType('todos')}
-              className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-800"
-            >
-              Restablecer todos los tipos
-            </button>
-          )}
-        </div>
-        <div className="flex flex-wrap gap-2 pt-1">
-          {(Object.keys(EVENT_TYPE_CONFIG) as EventType[]).map((tKey) => {
-            const config = EVENT_TYPE_CONFIG[tKey];
-            const isSelected = filterType === tKey;
-            return (
-              <button
-                key={tKey}
-                onClick={() => setFilterType(filterType === tKey ? 'todos' : tKey)}
-                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-semibold transition-all border ${
-                  isSelected
-                    ? 'ring-2 ring-indigo-500 shadow-xs'
-                    : 'hover:bg-slate-50'
-                }`}
-                style={{
-                  borderColor: isSelected ? config.color : `${config.color}40`,
-                  backgroundColor: isSelected ? `${config.color}25` : `${config.color}0D`,
-                  color: config.color,
-                }}
-                title={`Filtrar por ${config.label}`}
-              >
+            {/* Muestra rápida de colores cuando está colapsado */}
+            <div className="hidden sm:flex items-center gap-1 ml-2">
+              {(Object.keys(EVENT_TYPE_CONFIG) as EventType[]).slice(0, 7).map((k) => (
                 <span
-                  className="h-2 w-2 rounded-full shrink-0 shadow-2xs"
-                  style={{ backgroundColor: config.color }}
+                  key={k}
+                  className="h-2 w-2 rounded-full"
+                  style={{ backgroundColor: EVENT_TYPE_CONFIG[k].color }}
+                  title={EVENT_TYPE_CONFIG[k].label}
                 />
-                <span>{config.label}</span>
+              ))}
+            </div>
+            {filterType !== 'todos' && (
+              <span className="ml-2 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                Filtro: {EVENT_TYPE_CONFIG[filterType as EventType]?.label || filterType}
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            {filterType !== 'todos' && (
+              <button
+                onClick={() => setFilterType('todos')}
+                className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-800"
+              >
+                Limpiar filtro
               </button>
-            );
-          })}
+            )}
+            <button
+              onClick={() => setShowLegend(!showLegend)}
+              className="flex items-center gap-1 text-[11px] font-semibold text-slate-500 hover:text-slate-800 px-2 py-1 rounded-lg hover:bg-slate-100 transition-colors"
+            >
+              <span>{showLegend ? 'Ocultar tipos' : 'Ver todos los tipos'}</span>
+              {showLegend ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+            </button>
+          </div>
         </div>
+
+        {showLegend && (
+          <div className="flex flex-wrap gap-1.5 pt-2.5 mt-2 border-t border-slate-100 animate-fade-in">
+            {(Object.keys(EVENT_TYPE_CONFIG) as EventType[]).map((tKey) => {
+              const config = EVENT_TYPE_CONFIG[tKey];
+              const isSelected = filterType === tKey;
+              return (
+                <button
+                  key={tKey}
+                  onClick={() => setFilterType(filterType === tKey ? 'todos' : tKey)}
+                  className={`flex items-center gap-1.5 px-2 py-0.5 rounded-lg text-[11px] font-semibold transition-all border ${
+                    isSelected
+                      ? 'ring-2 ring-indigo-500 shadow-xs'
+                      : 'hover:bg-slate-50'
+                  }`}
+                  style={{
+                    borderColor: isSelected ? config.color : `${config.color}40`,
+                    backgroundColor: isSelected ? `${config.color}25` : `${config.color}0D`,
+                    color: config.color,
+                  }}
+                  title={`Filtrar por ${config.label}`}
+                >
+                  <span
+                    className="h-1.5 w-1.5 rounded-full shrink-0 shadow-2xs"
+                    style={{ backgroundColor: config.color }}
+                  />
+                  <span>{config.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );
