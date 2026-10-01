@@ -1,6 +1,7 @@
 // Tipos y Modelos de Dominio de EventFlow Planner
 
-export type UserRole = 'administrador' | 'usuario';
+export type UserRole = 'administrador' | 'gestor' | 'usuario' | 'lector';
+export type UserAccountStatus = 'aprobado' | 'pendiente' | 'bloqueado';
 
 export interface UserProfile {
   uid: string;
@@ -8,8 +9,11 @@ export interface UserProfile {
   displayName: string;
   photoURL?: string;
   role: UserRole;
+  status: UserAccountStatus;
   createdAt: string;
   lastLogin: string;
+  approvedBy?: string;
+  approvedAt?: string;
 }
 
 export type SpaceType = 'auditorio' | 'estudio' | 'sala_reuniones' | 'laboratorio' | 'aula' | 'otro';

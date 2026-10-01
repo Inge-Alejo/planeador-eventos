@@ -10,6 +10,7 @@ import {
   FileSpreadsheet,
   History,
   Sparkles,
+  ShieldCheck,
   X,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
@@ -23,13 +24,15 @@ export type ActiveTab =
   | 'solicitudes'
   | 'notificaciones'
   | 'reportes'
-  | 'auditoria';
+  | 'auditoria'
+  | 'usuarios';
 
 interface SidebarProps {
   activeTab: ActiveTab;
   onTabChange: (tab: ActiveTab) => void;
   pendingRequestsCount: number;
   activeConflictsCount: number;
+  pendingUsersCount?: number;
   isOpenMobile: boolean;
   onCloseMobile: () => void;
 }
@@ -39,6 +42,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onTabChange,
   pendingRequestsCount,
   activeConflictsCount,
+  pendingUsersCount = 0,
   isOpenMobile,
   onCloseMobile,
 }) => {
@@ -59,6 +63,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
     },
     { id: 'notificaciones' as ActiveTab, label: 'Notificaciones', icon: Bell },
     { id: 'reportes' as ActiveTab, label: 'Reportes', icon: FileSpreadsheet },
+    {
+      id: 'usuarios' as ActiveTab,
+      label: 'Control de Usuarios',
+      icon: ShieldCheck,
+      adminOnly: true,
+      badge: pendingUsersCount > 0 ? pendingUsersCount : undefined,
+      badgeColor: 'bg-amber-500',
+    },
     { id: 'auditoria' as ActiveTab, label: 'Auditoría', icon: History, adminOnly: true },
   ];
 

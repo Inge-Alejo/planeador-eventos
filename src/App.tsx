@@ -16,10 +16,12 @@ import { EventDetailDrawer } from './components/events/EventDetailDrawer';
 import { SpaceModal } from './components/spaces/SpaceModal';
 import { PersonModal } from './components/people/PersonModal';
 import { SimulatedEmailModal } from './components/requests/SimulatedEmailModal';
+import { UserManagementView } from './components/users/UserManagementView';
 import { EventEntity, Space, Person, ParticipationRequest } from './types';
 import confetti from 'canvas-confetti';
 
 const MainApp: React.FC = () => {
+  const { user, canEdit, isAdmin } = useAuth();
   const {
     events,
     spaces,
@@ -27,6 +29,8 @@ const MainApp: React.FC = () => {
     requests,
     notifications,
     auditLogs,
+    users,
+    pendingUsersCount,
     metrics,
     allActiveConflicts,
     saveEvent,
@@ -37,6 +41,7 @@ const MainApp: React.FC = () => {
     respondToParticipationRequest,
     markNotificationAsRead,
     markAllNotificationsAsRead,
+    updateUserRoleAndStatus,
   } = useEventFlow();
 
   const [activeTab, setActiveTab] = useState<ActiveTab>('dashboard');
@@ -65,12 +70,24 @@ const MainApp: React.FC = () => {
 
   // Manejador para abrir modal de creación de evento
   const handleOpenCreateEvent = (preset?: { date?: string; time?: string; spaceId?: string }) => {
+    if (!canEdit) {
+      if (!user) {
+        alert('Modo Consulta Pública:\n\nCualquier persona puede ver la programación del calendario. Para crear o editar eventos, inicia sesión con Google y solicita autorización al Administrador.');
+      } else {
+        alert('Cuenta en Modo Solo Lectura:\n\nTu solicitud de acceso está pendiente de aprobación por el Administrador. Solo usuarios aprobados como Gestores o Administradores pueden registrar eventos.');
+      }
+      return;
+    }
     setEventToEdit(null);
     setEventPreset(preset);
     setIsEventModalOpen(true);
   };
 
   const handleEditEvent = (event: EventEntity) => {
+    if (!canEdit) {
+      alert('No tienes permisos para modificar eventos existentes.');
+      return;
+    }
     setEventToEdit(event);
     setEventPreset(undefined);
     setIsEventModalOpen(true);
@@ -133,6 +150,7 @@ const MainApp: React.FC = () => {
         }}
         pendingRequestsCount={metrics.pendingRequestsCount}
         activeConflictsCount={metrics.activeConflictsCount}
+        pendingUsersCount={pendingUsersCount}
         isOpenMobile={isMobileSidebarOpen}
         onCloseMobile={() => setIsMobileSidebarOpen(false)}
       />
@@ -241,6 +259,14 @@ const MainApp: React.FC = () => {
           )}
 
           {activeTab === 'auditoria' && <AuditView auditLogs={auditLogs} />}
+
+          {activeTab === 'usuarios' && (
+            <UserManagementView
+              users={users}
+              onUpdateUser={updateUserRoleAndStatus}
+              currentUserUid={user?.uid}
+            />
+          )}
         </main>
       </div>
 

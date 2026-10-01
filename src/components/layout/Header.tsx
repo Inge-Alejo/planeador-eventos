@@ -11,6 +11,9 @@ import {
   XCircle,
   AlertTriangle,
   Menu,
+  Eye,
+  Clock,
+  Lock,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { AppNotification } from '../../types';
@@ -36,11 +39,23 @@ export const Header: React.FC<HeaderProps> = ({
   onToggleMobileSidebar,
   onSelectEventFromNotification,
 }) => {
-  const { user, isAdmin, switchRole, logout, loginWithGoogle } = useAuth();
+  const { user, isAdmin, canEdit, isPending, isReadOnly, switchRole, logout, loginWithGoogle } = useAuth();
   const [showNotifications, setShowNotifications] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
 
   const unreadCount = notifications.filter((n) => !n.read).length;
+
+  const handleCreateClick = () => {
+    if (!canEdit) {
+      if (!user) {
+        alert('Modo Consulta Pública:\n\nCualquier persona puede ver la programación del calendario. Para crear o editar eventos, inicia sesión con Google y solicita autorización al Administrador.');
+      } else {
+        alert('Cuenta en Modo Solo Lectura:\n\nTu solicitud de acceso está pendiente de aprobación por el Administrador. Solo usuarios aprobados como Gestores o Administradores pueden registrar eventos.');
+      }
+      return;
+    }
+    onOpenNewEvent();
+  };
 
   return (
     <header className="sticky top-0 z-30 flex h-16 w-full items-center justify-between border-b border-slate-200/80 bg-white/95 px-4 backdrop-blur-md sm:px-6">
@@ -75,11 +90,37 @@ export const Header: React.FC<HeaderProps> = ({
       </div>
 
       {/* Lado derecho: Botón Acción + Notificaciones + Perfil */}
-      <div className="flex items-center gap-2 sm:gap-4">
+      <div className="flex items-center gap-2 sm:gap-3">
+        {/* Indicadores de Estado de Acceso */}
+        {isPending && (
+          <div
+            className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-amber-50 text-amber-800 border border-amber-200 text-xs font-semibold animate-pulse"
+            title="Tu cuenta fue registrada y está pendiente de ser aprobada por el Administrador"
+          >
+            <Clock className="w-3.5 h-3.5 text-amber-600" />
+            <span>Pendiente Aprobación</span>
+          </div>
+        )}
+
+        {isReadOnly && !isPending && (
+          <div
+            className="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-slate-100 text-slate-600 border border-slate-200 text-xs font-semibold"
+            title="Modo Consulta: puedes ver todo el calendario, pero no realizar modificaciones"
+          >
+            <Eye className="w-3.5 h-3.5 text-slate-400" />
+            <span>Modo Consulta</span>
+          </div>
+        )}
+
         {/* Botón "+ Nuevo Evento" */}
         <button
-          onClick={onOpenNewEvent}
-          className="flex items-center gap-2 rounded-xl bg-indigo-600 px-3.5 py-2 text-xs sm:text-sm font-semibold text-white shadow-sm hover:bg-indigo-700 active:scale-[0.98] transition-all"
+          onClick={handleCreateClick}
+          className={`flex items-center gap-2 rounded-xl px-3.5 py-2 text-xs sm:text-sm font-semibold transition-all ${
+            canEdit
+              ? 'bg-indigo-600 text-white shadow-sm hover:bg-indigo-700 active:scale-[0.98]'
+              : 'bg-slate-100 text-slate-400 border border-slate-200 hover:bg-slate-200 hover:text-slate-600'
+          }`}
+          title={!canEdit ? 'Requiere aprobación de Administrador para crear eventos' : 'Crear nuevo evento'}
         >
           <Plus className="w-4 h-4" />
           <span className="hidden sm:inline">Nuevo Evento</span>

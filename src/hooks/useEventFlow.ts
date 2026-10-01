@@ -9,6 +9,7 @@ import {
   AuditLog,
   DashboardMetrics,
   ConflictItem,
+  UserProfile,
 } from '../types';
 import {
   initializeSeedData,
@@ -18,6 +19,8 @@ import {
   subscribeToRequests,
   subscribeToNotifications,
   subscribeToAudit,
+  subscribeToUsers,
+  updateUserRoleAndStatus,
   saveEvent,
   deleteEvent,
   saveSpace,
@@ -37,6 +40,7 @@ export function useEventFlow() {
   const [requests, setRequests] = useState<ParticipationRequest[]>([]);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
+  const [users, setUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Inicializar y subscribirse en tiempo real
@@ -49,6 +53,7 @@ export function useEventFlow() {
     const unsubRequests = subscribeToRequests(setRequests);
     const unsubNotifs = subscribeToNotifications(setNotifications);
     const unsubAudit = subscribeToAudit(setAuditLogs);
+    const unsubUsers = subscribeToUsers(setUsers);
 
     setLoading(false);
 
@@ -59,6 +64,7 @@ export function useEventFlow() {
       unsubRequests();
       unsubNotifs();
       unsubAudit();
+      unsubUsers();
     };
   }, []);
 
@@ -152,6 +158,10 @@ export function useEventFlow() {
     return list;
   }, [events, spaces, people]);
 
+  const pendingUsersCount = useMemo(() => {
+    return users.filter((u) => u.status === 'pendiente').length;
+  }, [users]);
+
   return {
     events,
     spaces,
@@ -159,6 +169,8 @@ export function useEventFlow() {
     requests,
     notifications,
     auditLogs,
+    users,
+    pendingUsersCount,
     metrics,
     allActiveConflicts,
     loading,
@@ -170,5 +182,6 @@ export function useEventFlow() {
     respondToParticipationRequest,
     markNotificationAsRead,
     markAllNotificationsAsRead,
+    updateUserRoleAndStatus,
   };
 }

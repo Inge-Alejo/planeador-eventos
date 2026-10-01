@@ -1,5 +1,15 @@
 // Almacenamiento Reactivo con Sincronización en Tiempo Real (Local & Firebase Adapter)
-import { EventEntity, Space, Person, ParticipationRequest, AppNotification, AuditLog, UserProfile } from '../types';
+import {
+  EventEntity,
+  Space,
+  Person,
+  ParticipationRequest,
+  AppNotification,
+  AuditLog,
+  UserProfile,
+  UserRole,
+  UserAccountStatus,
+} from '../types';
 import { getBogotaToday } from '../lib/timezone';
 import { db, isFirebaseConfigured } from '../lib/firebase';
 import {
@@ -20,6 +30,7 @@ const STORAGE_KEYS = {
   NOTIFICATIONS: 'eventflow_notifications',
   AUDIT: 'eventflow_audit',
   USER: 'eventflow_user',
+  USERS_LIST: 'eventflow_users_list',
 };
 
 // Semilla inicial de espacios empresariales
@@ -272,6 +283,39 @@ const initialAudit: AuditLog[] = [
   },
 ];
 
+const initialUsers: UserProfile[] = [
+  {
+    uid: 'admin-1',
+    displayName: 'Alejandro Gómez (Admin)',
+    email: 'alejandro.gomez@udea.edu.co',
+    photoURL: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+    role: 'administrador',
+    status: 'aprobado',
+    createdAt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
+    lastLogin: new Date().toISOString(),
+  },
+  {
+    uid: 'user-2',
+    displayName: 'Dra. Sofía Restrepo',
+    email: 'sofia.restrepo@udea.edu.co',
+    photoURL: 'https://images.unsplash.com/photo-1580489944761-15a19d654956?w=150&auto=format&fit=crop&q=80',
+    role: 'gestor',
+    status: 'aprobado',
+    createdAt: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString(),
+    lastLogin: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+  },
+  {
+    uid: 'user-3',
+    displayName: 'Juan Pablo Montoya',
+    email: 'juan.montoya@udea.edu.co',
+    photoURL: undefined,
+    role: 'lector',
+    status: 'pendiente',
+    createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+    lastLogin: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+  },
+];
+
 // BroadcastChannel para sincronizar pestañas en tiempo real local
 const channel = typeof window !== 'undefined' && 'BroadcastChannel' in window
   ? new BroadcastChannel('eventflow_realtime_sync')
@@ -306,6 +350,7 @@ const peopleListeners = new Set<Listener<Person[]>>();
 const requestListeners = new Set<Listener<ParticipationRequest[]>>();
 const notifListeners = new Set<Listener<AppNotification[]>>();
 const auditListeners = new Set<Listener<AuditLog[]>>();
+const userListeners = new Set<Listener<UserProfile[]>>();
 
 // Inicializar datos si no existen
 export function initializeSeedData(): void {
@@ -316,6 +361,7 @@ export function initializeSeedData(): void {
   if (!localStorage.getItem(STORAGE_KEYS.REQUESTS)) save(STORAGE_KEYS.REQUESTS, initialRequests);
   if (!localStorage.getItem(STORAGE_KEYS.NOTIFICATIONS)) save(STORAGE_KEYS.NOTIFICATIONS, initialNotifications);
   if (!localStorage.getItem(STORAGE_KEYS.AUDIT)) save(STORAGE_KEYS.AUDIT, initialAudit);
+  if (!localStorage.getItem(STORAGE_KEYS.USERS_LIST)) save(STORAGE_KEYS.USERS_LIST, initialUsers);
 }
 
 // Escuchar cambios de otras pestañas
@@ -329,6 +375,7 @@ if (channel) {
       if (key === STORAGE_KEYS.REQUESTS) requestListeners.forEach((fn) => fn(load(STORAGE_KEYS.REQUESTS, [])));
       if (key === STORAGE_KEYS.NOTIFICATIONS) notifListeners.forEach((fn) => fn(load(STORAGE_KEYS.NOTIFICATIONS, [])));
       if (key === STORAGE_KEYS.AUDIT) auditListeners.forEach((fn) => fn(load(STORAGE_KEYS.AUDIT, [])));
+      if (key === STORAGE_KEYS.USERS_LIST) userListeners.forEach((fn) => fn(load(STORAGE_KEYS.USERS_LIST, [])));
     }
   };
 }
@@ -412,6 +459,48 @@ export function subscribeToAudit(callback: (logs: AuditLog[]) => void): () => vo
   return () => auditListeners.delete(callback);
 }
 
+export function subscribeToUsers(callback: (users: UserProfile[]) => void): () => void {
+  if (isFirebaseConfigured && db) {
+    const unsub = onSnapshot(collection(db, 'users'), (snapshot) => {
+      const data = snapshot.docs.map((d) => ({ uid: d.id, ...d.data() } as UserProfile));
+      callback(data);
+    });
+    return unsub;
+  }
+  callback(load(STORAGE_KEYS.USERS_LIST, initialUsers));
+  userListeners.add(callback);
+  return () => userListeners.delete(callback);
+}
+
+export async function updateUserRoleAndStatus(
+  uid: string,
+  newRole: UserRole,
+  newStatus: UserAccountStatus
+): Promise<void> {
+  if (isFirebaseConfigured && db) {
+    const userRef = doc(db, 'users', uid);
+    await updateDoc(userRef, {
+      role: newRole,
+      status: newStatus,
+      updatedAt: serverTimestamp(),
+    });
+    return;
+  }
+
+  // Local storage fallback
+  const current = load<UserProfile[]>(STORAGE_KEYS.USERS_LIST, initialUsers);
+  const idx = current.findIndex((u) => u.uid === uid);
+  if (idx >= 0) {
+    current[idx] = {
+      ...current[idx],
+      role: newRole,
+      status: newStatus,
+    };
+    save(STORAGE_KEYS.USERS_LIST, current);
+    userListeners.forEach((fn) => fn(current));
+  }
+}
+
 // Operaciones de Mutación (Eventos)
 export async function saveEvent(event: Omit<EventEntity, 'id'> & { id?: string }): Promise<string> {
   const user = load<UserProfile>(STORAGE_KEYS.USER, {
@@ -419,6 +508,7 @@ export async function saveEvent(event: Omit<EventEntity, 'id'> & { id?: string }
     displayName: 'Administrador General',
     email: 'admin@empresa.com',
     role: 'administrador',
+    status: 'aprobado',
     createdAt: new Date().toISOString(),
     lastLogin: new Date().toISOString(),
   });
@@ -492,6 +582,7 @@ export async function deleteEvent(eventId: string): Promise<void> {
     displayName: 'Administrador General',
     email: 'admin@empresa.com',
     role: 'administrador',
+    status: 'aprobado',
     createdAt: '',
     lastLogin: '',
   });

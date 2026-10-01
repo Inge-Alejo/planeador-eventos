@@ -1,13 +1,17 @@
-// Contexto de Autenticación Empresarial (Google OAuth + Demo Selector)
+// Contexto de Autenticación Empresarial con Aprobación de Usuarios y RBAC
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { UserProfile, UserRole } from '../types';
-import { auth, googleProvider, isFirebaseConfigured } from '../lib/firebase';
+import { UserProfile, UserRole, UserAccountStatus } from '../types';
+import { auth, googleProvider, db, isFirebaseConfigured } from '../lib/firebase';
 import { signInWithPopup, signOut as fbSignOut, onAuthStateChanged } from 'firebase/auth';
+import { doc, getDoc, setDoc, onSnapshot, serverTimestamp } from 'firebase/firestore';
 
 interface AuthContextType {
   user: UserProfile | null;
   loading: boolean;
   isAdmin: boolean;
+  canEdit: boolean;
+  isPending: boolean;
+  isReadOnly: boolean;
   loginWithGoogle: () => Promise<void>;
   loginAsDemoAdmin: () => void;
   loginAsDemoUser: () => void;
@@ -20,6 +24,15 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const USER_STORAGE_KEY = 'eventflow_user';
 
+// Correos administradores configurables por entorno
+const ADMIN_EMAILS: string[] = (
+  (import.meta.env.VITE_ADMIN_EMAILS as string) || ''
+)
+  .toLowerCase()
+  .split(',')
+  .map((e) => e.trim())
+  .filter(Boolean);
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<UserProfile | null>(() => {
     if (typeof window === 'undefined') return null;
@@ -31,13 +44,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return null;
       }
     }
-    // Usuario administrador por defecto para visualización inmediata
+    // Usuario por defecto para visualización inicial
     return {
       uid: 'admin-1',
-      displayName: 'Alejandro Gómez',
-      email: 'alejandro.gomez@empresa.com',
+      displayName: 'Alejandro Gómez (Admin)',
+      email: 'alejandro.gomez@udea.edu.co',
       photoURL: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
       role: 'administrador',
+      status: 'aprobado',
       createdAt: new Date().toISOString(),
       lastLogin: new Date().toISOString(),
     };
@@ -45,25 +59,74 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const [loading, setLoading] = useState<boolean>(false);
 
-  // Escuchar estado de Firebase si está configurado
+  // Escuchar estado de Firebase Authentication y sincronizar con Firestore
   useEffect(() => {
-    if (isFirebaseConfigured && auth) {
-      const unsub = onAuthStateChanged(auth, (fbUser) => {
+    if (isFirebaseConfigured && auth && db) {
+      let unsubscribeUserDoc: (() => void) | null = null;
+
+      const unsubAuth = onAuthStateChanged(auth, async (fbUser) => {
         if (fbUser) {
-          const profile: UserProfile = {
-            uid: fbUser.uid,
-            displayName: fbUser.displayName || 'Usuario Google',
-            email: fbUser.email || '',
-            photoURL: fbUser.photoURL || undefined,
-            role: 'administrador', // O asignable según claim o BD
-            createdAt: new Date().toISOString(),
-            lastLogin: new Date().toISOString(),
-          };
-          setUser(profile);
-          localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(profile));
+          const userEmail = (fbUser.email || '').toLowerCase();
+          const userDocRef = doc(db!, 'users', fbUser.uid);
+
+          // Verificar si el correo es Admin Raíz
+          const isRootAdmin = ADMIN_EMAILS.length > 0
+            ? ADMIN_EMAILS.includes(userEmail)
+            : true; // Si no hay lista definida, el primer login es Admin
+
+          try {
+            const snap = await getDoc(userDocRef);
+            if (!snap.exists()) {
+              // Nuevo usuario: si es admin raíz queda aprobado, si no queda pendiente (solo lectura)
+              const initialProfile: UserProfile = {
+                uid: fbUser.uid,
+                displayName: fbUser.displayName || 'Usuario Google',
+                email: userEmail,
+                photoURL: fbUser.photoURL || undefined,
+                role: isRootAdmin ? 'administrador' : 'lector',
+                status: isRootAdmin ? 'aprobado' : 'pendiente',
+                createdAt: new Date().toISOString(),
+                lastLogin: new Date().toISOString(),
+              };
+              await setDoc(userDocRef, {
+                ...initialProfile,
+                timestamp: serverTimestamp(),
+              });
+              setUser(initialProfile);
+              localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(initialProfile));
+            } else {
+              // Actualizar último login
+              const data = snap.data() as UserProfile;
+              // Si el email está en ADMIN_EMAILS y no era admin, promoverlo
+              if (isRootAdmin && data.role !== 'administrador') {
+                data.role = 'administrador';
+                data.status = 'aprobado';
+                await setDoc(userDocRef, { role: 'administrador', status: 'aprobado' }, { merge: true });
+              }
+              setUser({ ...data, uid: fbUser.uid });
+              localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(data));
+            }
+
+            // Escuchar cambios en vivo del documento del usuario (por si el Admin lo aprueba en tiempo real)
+            unsubscribeUserDoc = onSnapshot(userDocRef, (docSnap) => {
+              if (docSnap.exists()) {
+                const liveData = docSnap.data() as UserProfile;
+                setUser({ ...liveData, uid: fbUser.uid });
+                localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(liveData));
+              }
+            });
+          } catch (err) {
+            console.error('Error sincronizando perfil en Firestore:', err);
+          }
+        } else {
+          if (unsubscribeUserDoc) unsubscribeUserDoc();
         }
       });
-      return () => unsub();
+
+      return () => {
+        unsubAuth();
+        if (unsubscribeUserDoc) unsubscribeUserDoc();
+      };
     }
   }, []);
 
@@ -71,26 +134,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setLoading(true);
     try {
       if (isFirebaseConfigured && auth && googleProvider) {
-        const result = await signInWithPopup(auth, googleProvider);
-        const fbUser = result.user;
-        const profile: UserProfile = {
-          uid: fbUser.uid,
-          displayName: fbUser.displayName || 'Usuario Google',
-          email: fbUser.email || '',
-          photoURL: fbUser.photoURL || undefined,
-          role: 'administrador',
-          createdAt: new Date().toISOString(),
-          lastLogin: new Date().toISOString(),
-        };
-        setUser(profile);
-        localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(profile));
+        await signInWithPopup(auth, googleProvider);
       } else {
-        // Simulación controlada cuando no hay API Key de Google
         loginAsDemoAdmin();
       }
     } catch (err: any) {
-      console.error('Error al iniciar sesión con Google:', err);
-      alert('Error en Google Sign-In: ' + (err.message || 'Verifica la consola'));
+      console.error('Error en Google Sign-In:', err);
+      alert('Error al iniciar sesión con Google: ' + (err.message || 'Verifica la consola'));
     } finally {
       setLoading(false);
     }
@@ -100,9 +150,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const adminUser: UserProfile = {
       uid: 'admin-1',
       displayName: 'Alejandro Gómez (Admin)',
-      email: 'alejandro.gomez@empresa.com',
+      email: 'alejandro.gomez@udea.edu.co',
       photoURL: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
       role: 'administrador',
+      status: 'aprobado',
       createdAt: new Date().toISOString(),
       lastLogin: new Date().toISOString(),
     };
@@ -114,9 +165,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const regularUser: UserProfile = {
       uid: 'user-2',
       displayName: 'Dra. Sofía Restrepo (Usuario)',
-      email: 'sofia.restrepo@empresa.com',
+      email: 'sofia.restrepo@udea.edu.co',
       photoURL: 'https://images.unsplash.com/photo-1580489944761-15a19d654956?w=150&auto=format&fit=crop&q=80',
-      role: 'usuario',
+      role: 'lector',
+      status: 'pendiente',
       createdAt: new Date().toISOString(),
       lastLogin: new Date().toISOString(),
     };
@@ -126,9 +178,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const switchRole = (newRole: UserRole) => {
     if (!user) return;
-    const updated = { ...user, role: newRole };
+    const updated: UserProfile = {
+      ...user,
+      role: newRole,
+      status: newRole === 'lector' ? 'pendiente' : 'aprobado',
+    };
     setUser(updated);
     localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(updated));
+
+    // Si Firebase está activo, actualizar Firestore
+    if (isFirebaseConfigured && db && user.uid) {
+      setDoc(doc(db, 'users', user.uid), { role: newRole, status: updated.status }, { merge: true }).catch(console.error);
+    }
   };
 
   const logout = async () => {
@@ -139,12 +200,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     localStorage.removeItem(USER_STORAGE_KEY);
   };
 
+  // Cálculo de permisos granulares
+  const isAdmin = user?.role === 'administrador' && user?.status === 'aprobado';
+  const canEdit = (user?.role === 'administrador' || user?.role === 'gestor') && user?.status === 'aprobado';
+  const isPending = user?.status === 'pendiente';
+  const isReadOnly = !canEdit;
+
   return (
     <AuthContext.Provider
       value={{
         user,
         loading,
-        isAdmin: user?.role === 'administrador',
+        isAdmin,
+        canEdit,
+        isPending,
+        isReadOnly,
         loginWithGoogle,
         loginAsDemoAdmin,
         loginAsDemoUser,
