@@ -890,6 +890,140 @@ export async function updateUserRoleAndStatus(
   }
 }
 
+export async function deleteUser(userId: string): Promise<void> {
+  const currentAdmin = load<UserProfile>(STORAGE_KEYS.USER, {
+    uid: auth?.currentUser?.uid || 'person-proyectostic',
+    displayName: auth?.currentUser?.displayName || 'Alejandro Proyectos TIC',
+    email: auth?.currentUser?.email || 'proyectostic.med@udea.edu.co',
+    role: 'administrador',
+    status: 'aprobado',
+    createdAt: '',
+    lastLogin: '',
+  });
+
+  const now = new Date().toISOString();
+
+  // Validación de seguridad estricta: No eliminar al admin principal ni la sesión activa
+  if (
+    userId === 'person-proyectostic' ||
+    (auth?.currentUser && auth.currentUser.uid === userId) ||
+    (currentAdmin.uid === userId)
+  ) {
+    throw new Error('Por seguridad, no está permitido eliminar la cuenta del Administrador Principal ni tu propia sesión activa.');
+  }
+
+  let deletedUserEmail = '';
+  let deletedUserName = '';
+
+  if (isFirebaseConfigured && db) {
+    try {
+      // 1. Obtener datos del usuario antes de borrar
+      const userRef = doc(db, 'users', userId);
+      const userSnap = await getDoc(userRef);
+      if (userSnap.exists()) {
+        const uData = userSnap.data();
+        deletedUserEmail = (uData.email || '').toLowerCase().trim();
+        deletedUserName = uData.displayName || '';
+
+        if (deletedUserEmail === 'proyectostic.med@udea.edu.co') {
+          throw new Error('Por seguridad, no se puede eliminar la cuenta principal de la Facultad de Medicina.');
+        }
+      }
+
+      // 2. Eliminar de la colección 'users'
+      await deleteDoc(userRef);
+
+      // 3. Eliminar de la colección 'people' (por id de documento)
+      await deleteDoc(doc(db, 'people', userId)).catch(console.warn);
+
+      // 4. Si tiene correo, eliminar cualquier registro en 'people' asociado a ese correo
+      if (deletedUserEmail) {
+        try {
+          const qPeople = query(collection(db, 'people'), where('email', '==', deletedUserEmail));
+          const snapPeople = await getDocs(qPeople);
+          for (const pDoc of snapPeople.docs) {
+            await deleteDoc(doc(db, 'people', pDoc.id)).catch(console.warn);
+          }
+        } catch (e) {
+          console.warn('Error eliminando registros asociados en people por email:', e);
+        }
+      }
+
+      // 5. Registrar log de auditoría en Firestore
+      try {
+        await addDoc(collection(db, 'audit_logs'), {
+          action: 'USUARIO_ELIMINADO',
+          entityId: userId,
+          entityType: 'usuario',
+          details: { 
+            uid: userId, 
+            email: deletedUserEmail, 
+            displayName: deletedUserName, 
+            deletedBy: currentAdmin.email 
+          },
+          user: { 
+            uid: currentAdmin.uid, 
+            name: currentAdmin.displayName, 
+            email: currentAdmin.email 
+          },
+          timestamp: now,
+        });
+      } catch (e) {
+        console.warn('Error guardando audit log de usuario eliminado en Firestore:', e);
+      }
+    } catch (err: any) {
+      console.error('Error eliminando usuario en Firestore:', err);
+      if (err.message && err.message.includes('Por seguridad')) {
+        throw err;
+      }
+    }
+  }
+
+  // Actualización inmediata en caché / almacenamiento local
+  const currentUsers = loadCleanUsers();
+  const targetUser = currentUsers.find((u) => u.uid === userId);
+  if (!deletedUserEmail && targetUser) {
+    deletedUserEmail = (targetUser.email || '').toLowerCase().trim();
+    deletedUserName = targetUser.displayName || '';
+  }
+
+  if (deletedUserEmail === 'proyectostic.med@udea.edu.co') {
+    throw new Error('Por seguridad, no se puede eliminar la cuenta principal de la Facultad de Medicina.');
+  }
+
+  const updatedUsers = currentUsers.filter(
+    (u) => u.uid !== userId && (!deletedUserEmail || u.email.toLowerCase() !== deletedUserEmail)
+  );
+  save(STORAGE_KEYS.USERS_LIST, updatedUsers);
+  userListeners.forEach((fn) => fn(updatedUsers));
+
+  // Sincronizar directorio de personas eliminando el colaborador correspondiente
+  const currentPeople = load<Person[]>(STORAGE_KEYS.PEOPLE, initialPeople);
+  const updatedPeople = currentPeople.filter(
+    (p) => p.id !== userId && (!deletedUserEmail || p.email.toLowerCase() !== deletedUserEmail)
+  );
+  save(STORAGE_KEYS.PEOPLE, updatedPeople);
+  peopleListeners.forEach((fn) => fn(updatedPeople));
+
+  // Registrar auditoría local
+  addAuditLog({
+    action: 'USUARIO_ELIMINADO',
+    entityId: userId,
+    entityType: 'usuario',
+    details: { 
+      uid: userId, 
+      email: deletedUserEmail, 
+      displayName: deletedUserName,
+      deletedBy: currentAdmin.email 
+    },
+    user: { 
+      uid: currentAdmin.uid, 
+      name: currentAdmin.displayName, 
+      email: currentAdmin.email 
+    },
+  });
+}
+
 // Operaciones de Mutación (Eventos) en la Nube y Local
 export async function saveEvent(event: Omit<EventEntity, 'id'> & { id?: string }): Promise<string> {
   const user = load<UserProfile>(STORAGE_KEYS.USER, {

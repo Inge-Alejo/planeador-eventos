@@ -11,6 +11,7 @@ import {
   CheckCircle2,
   AlertTriangle,
   Lock,
+  Trash2,
 } from 'lucide-react';
 
 interface UserManagementViewProps {
@@ -21,6 +22,7 @@ interface UserManagementViewProps {
     newStatus: UserAccountStatus,
     approvedBy?: string
   ) => Promise<void>;
+  onDeleteUser?: (uid: string) => Promise<void>;
   currentUserUid?: string;
   currentUserEmail?: string;
   currentUserName?: string;
@@ -30,6 +32,7 @@ interface UserManagementViewProps {
 export const UserManagementView: React.FC<UserManagementViewProps> = ({
   users,
   onUpdateUser,
+  onDeleteUser,
   currentUserUid,
   currentUserEmail,
   currentUserName,
@@ -73,6 +76,44 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
       await onUpdateUser(uid, role, status, currentUserEmail);
     } catch (err: any) {
       alert('Error actualizando permisos: ' + err.message);
+    } finally {
+      setIsUpdating(null);
+    }
+  };
+
+  const handleDeleteUser = async (uid: string, displayName: string, email: string) => {
+    if (!isSuperAdminSession) {
+      alert('Operación restringida: Solo el administrador desde su perfil iniciado puede eliminar usuarios.');
+      return;
+    }
+
+    if (
+      email.toLowerCase() === 'proyectostic.med@udea.edu.co' ||
+      uid === currentUserUid ||
+      (currentUserEmail && email.toLowerCase() === currentUserEmail.toLowerCase())
+    ) {
+      alert('Acción denegada por seguridad: No es posible eliminar al Administrador Principal ni a tu propia cuenta en sesión activa.');
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `¿Deseas eliminar permanentemente al usuario "${displayName}" (${email})?\n\n` +
+      `Esta acción:\n` +
+      `• Eliminará su acceso a la plataforma en tiempo real.\n` +
+      `• Eliminará su registro del directorio de colaboradores.\n` +
+      `• Se guardará el registro inmutable en los registros de auditoría.\n\n` +
+      `¿Confirmas la eliminación definitiva?`
+    );
+
+    if (!confirmed) return;
+
+    setIsUpdating(uid);
+    try {
+      if (onDeleteUser) {
+        await onDeleteUser(uid);
+      }
+    } catch (err: any) {
+      alert('Error eliminando usuario: ' + (err?.message || 'Error inesperado'));
     } finally {
       setIsUpdating(null);
     }
@@ -220,7 +261,8 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
                 </tr>
               ) : (
                 filtered.map((u) => {
-                  const isSelf = u.uid === currentUserUid;
+                  const isSelf = u.uid === currentUserUid || (currentUserEmail && u.email.toLowerCase() === currentUserEmail.toLowerCase());
+                  const isRootAdmin = u.email.toLowerCase() === 'proyectostic.med@udea.edu.co';
 
                   return (
                     <tr key={u.uid} className="hover:bg-slate-50/70 transition-colors">
@@ -240,7 +282,12 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
                           <div>
                             <p className="font-bold text-slate-900 flex items-center gap-1.5">
                               {u.displayName}
-                              {isSelf && (
+                              {isRootAdmin && (
+                                <span className="rounded bg-purple-100 text-[10px] font-bold text-purple-700 px-1.5 py-0.5 border border-purple-200">
+                                  Super Admin
+                                </span>
+                              )}
+                              {isSelf && !isRootAdmin && (
                                 <span className="rounded bg-indigo-50 text-[10px] font-bold text-indigo-700 px-1.5 py-0.2">
                                   Tú
                                 </span>
@@ -282,8 +329,14 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
                       </td>
 
                       <td className="py-3.5 px-4 text-right">
-                        {isSelf ? (
-                          <span className="text-[11px] text-slate-400 italic">Super Admin Raíz</span>
+                        {isRootAdmin ? (
+                          <span className="text-[11px] text-purple-700 font-semibold bg-purple-50 px-2 py-0.5 rounded border border-purple-200">
+                            Super Admin Raíz
+                          </span>
+                        ) : isSelf ? (
+                          <span className="text-[11px] text-indigo-700 font-semibold bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">
+                            Tu Sesión Activa
+                          </span>
                         ) : (
                           <div className="flex items-center justify-end gap-1.5">
                             {/* Botón Aprobar como Gestor de Eventos */}
@@ -291,7 +344,7 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
                               <button
                                 disabled={!isSuperAdminSession || isUpdating === u.uid}
                                 onClick={() => handleStatusChange(u.uid, 'gestor', 'aprobado')}
-                                className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold text-[11px] shadow-2xs transition-all"
+                                className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold text-[11px] shadow-2xs transition-all cursor-pointer"
                                 title={
                                   isSuperAdminSession
                                     ? 'Aprobar registro para que pueda crear y editar eventos'
@@ -305,7 +358,7 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
                               <button
                                 disabled={!isSuperAdminSession || isUpdating === u.uid}
                                 onClick={() => handleStatusChange(u.uid, 'lector', 'pendiente')}
-                                className="flex items-center gap-1 px-2 py-1 rounded-lg border border-slate-200 hover:bg-slate-100 disabled:opacity-50 text-slate-600 text-[11px] font-semibold transition-all"
+                                className="flex items-center gap-1 px-2 py-1 rounded-lg border border-slate-200 hover:bg-slate-100 disabled:opacity-50 text-slate-600 text-[11px] font-semibold transition-all cursor-pointer"
                                 title="Cambiar a solo lectura"
                               >
                                 <Eye className="w-3.5 h-3.5 text-slate-400" />
@@ -318,7 +371,7 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
                               <button
                                 disabled={!isSuperAdminSession || isUpdating === u.uid}
                                 onClick={() => handleStatusChange(u.uid, 'administrador', 'aprobado')}
-                                className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 disabled:opacity-50 rounded-lg transition-colors"
+                                className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 disabled:opacity-50 rounded-lg transition-colors cursor-pointer"
                                 title="Hacer Administrador"
                               >
                                 <Shield className="w-4 h-4" />
@@ -330,12 +383,26 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
                               <button
                                 disabled={!isSuperAdminSession || isUpdating === u.uid}
                                 onClick={() => handleStatusChange(u.uid, 'lector', 'bloqueado')}
-                                className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 disabled:opacity-50 rounded-lg transition-colors"
+                                className="p-1 text-slate-400 hover:text-amber-600 hover:bg-amber-50 disabled:opacity-50 rounded-lg transition-colors cursor-pointer"
                                 title="Bloquear acceso"
                               >
                                 <Lock className="w-4 h-4" />
                               </button>
                             ) : null}
+
+                            {/* Eliminar Usuario Permanentemente */}
+                            <button
+                              disabled={!isSuperAdminSession || isUpdating === u.uid}
+                              onClick={() => handleDeleteUser(u.uid, u.displayName, u.email)}
+                              className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 disabled:opacity-50 rounded-lg transition-colors cursor-pointer"
+                              title={
+                                isSuperAdminSession
+                                  ? 'Eliminar permanentemente este usuario'
+                                  : 'Solo el administrador desde su perfil iniciado puede eliminar'
+                              }
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
                           </div>
                         )}
                       </td>

@@ -195,13 +195,14 @@ export type AuditAction =
   | 'GRUPO_ELIMINADO'
   | 'TAREA_CREADA'
   | 'TAREA_COMPLETADA'
-  | 'TAREA_ELIMINADA';
+  | 'TAREA_ELIMINADA'
+  | 'USUARIO_ELIMINADO';
 
 export interface AuditLog {
   id: string;
   action: AuditAction;
   entityId: string;
-  entityType: 'evento' | 'espacio' | 'persona' | 'solicitud' | 'grupo' | 'tarea';
+  entityType: 'evento' | 'espacio' | 'persona' | 'solicitud' | 'grupo' | 'tarea' | 'usuario';
   details: Record<string, any>;
   user: {
     uid: string;

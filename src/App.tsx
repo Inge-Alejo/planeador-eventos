@@ -58,6 +58,7 @@ const MainApp: React.FC = () => {
     markNotificationAsRead,
     markAllNotificationsAsRead,
     updateUserRoleAndStatus,
+    deleteUser,
   } = useEventFlow(user?.uid);
 
   const [activeTab, setActiveTab] = useState<ActiveTab>('dashboard');
@@ -431,6 +432,7 @@ const MainApp: React.FC = () => {
             <UserManagementView
               users={users}
               onUpdateUser={updateUserRoleAndStatus}
+              onDeleteUser={deleteUser}
               currentUserUid={user?.uid}
               currentUserEmail={user?.email}
               currentUserName={user?.displayName}

@@ -25,6 +25,7 @@ import {
   subscribeToGroups,
   subscribeToPersonalTasks,
   updateUserRoleAndStatus,
+  deleteUser,
   saveEvent,
   deleteEvent,
   saveSpace,
@@ -265,5 +266,6 @@ export function useEventFlow(currentUserId?: string) {
     markNotificationAsRead,
     markAllNotificationsAsRead,
     updateUserRoleAndStatus,
+    deleteUser,
   };
 }
