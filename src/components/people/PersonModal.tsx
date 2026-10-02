@@ -157,7 +157,7 @@ export const PersonModal: React.FC<PersonModalProps> = ({
             <input
               type="email"
               required
-              placeholder="ej: nombre@empresa.com"
+              placeholder="ej: nombre@udea.edu.co"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className="w-full rounded-xl border border-slate-200 px-3.5 py-2 text-sm text-slate-800 focus:outline-none focus:border-indigo-500 font-mono"

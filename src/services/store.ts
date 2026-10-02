@@ -26,6 +26,7 @@ import {
   query,
   where,
   getDocs,
+  getDoc,
   serverTimestamp,
 } from 'firebase/firestore';
 
@@ -113,7 +114,45 @@ const initialSpaces: Space[] = [
   },
 ];
 
-// Semilla inicial de personas del equipo
+// Helper para convertir un UserProfile en una Person del Directorio
+export function userProfileToPerson(user: UserProfile): Person {
+  const cleanDisplayName = (user.displayName || '').trim();
+  const emailName = user.email.split('@')[0];
+  const fullName = cleanDisplayName || emailName;
+  const nameParts = fullName.split(' ').filter(Boolean);
+
+  const firstName = nameParts[0] || 'Usuario';
+  const lastName = nameParts.slice(1).join(' ') || (cleanDisplayName ? '' : 'UdeA');
+
+  let roleTitle = 'Usuario Institucional';
+  if (user.role === 'administrador') {
+    roleTitle = user.email.toLowerCase() === 'proyectostic.med@udea.edu.co'
+      ? 'Líder Proyectos TIC & Superadministrador'
+      : 'Administrador del Sistema';
+  } else if (user.role === 'gestor') {
+    roleTitle = 'Gestor de Eventos & Espacios';
+  } else if (user.role === 'usuario') {
+    roleTitle = 'Docente / Investigador';
+  } else if (user.role === 'lector') {
+    roleTitle = 'Lector Institucional';
+  }
+
+  return {
+    id: user.uid,
+    firstName,
+    lastName,
+    email: user.email.toLowerCase().trim(),
+    roleTitle,
+    department: user.email.toLowerCase().includes('udea.edu.co')
+      ? 'Facultad de Medicina - UdeA'
+      : 'Comunidad Académica',
+    status: user.status === 'bloqueado' ? 'inactivo' : 'activo',
+    notes: user.status === 'pendiente' ? 'Usuario con registro pendiente de aprobación' : undefined,
+    createdAt: user.createdAt || new Date().toISOString(),
+  };
+}
+
+// Semilla inicial limpia: Solo superadministrador institucional oficial
 const initialPeople: Person[] = [
   {
     id: 'person-proyectostic',
@@ -125,56 +164,6 @@ const initialPeople: Person[] = [
     status: 'activo',
     createdAt: new Date().toISOString(),
   },
-  {
-    id: 'person-1',
-    firstName: 'Alejandro',
-    lastName: 'Gómez',
-    email: 'alejandro.gomez@empresa.com',
-    roleTitle: 'Ingeniero de Grabación',
-    department: 'Producción Audiovisual',
-    status: 'activo',
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: 'person-2',
-    firstName: 'Dra. Sofía',
-    lastName: 'Restrepo',
-    email: 'sofia.restrepo@empresa.com',
-    roleTitle: 'Directora Académica',
-    department: 'Dirección de Educación',
-    status: 'activo',
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: 'person-3',
-    firstName: 'Carlos',
-    lastName: 'Mendoza',
-    email: 'carlos.mendoza@empresa.com',
-    roleTitle: 'Coordinador de Eventos',
-    department: 'Operaciones y Logística',
-    status: 'activo',
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: 'person-4',
-    firstName: 'Laura',
-    lastName: 'Valencia',
-    email: 'laura.valencia@empresa.com',
-    roleTitle: 'Especialista en Streaming',
-    department: 'Tecnología',
-    status: 'activo',
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: 'person-5',
-    firstName: 'Dr. Roberto',
-    lastName: 'Jaramillo',
-    email: 'roberto.jaramillo@empresa.com',
-    roleTitle: 'Profesor Principal',
-    department: 'Ciencias de la Salud',
-    status: 'activo',
-    createdAt: new Date().toISOString(),
-  },
 ];
 
 // Generar eventos de ejemplo alrededor de la fecha de hoy
@@ -183,193 +172,75 @@ const today = getBogotaToday();
 const initialEvents: EventEntity[] = [
   {
     id: 'evt-1',
-    title: 'Grabación Videoclase Magistral',
-    description: 'Sesión de grabación del módulo de Neuroanatomía con croma y diapositivas interactivas.',
-    type: 'grabacion',
+    title: 'Reunión de Coordinación y Planificación TIC',
+    description: 'Sesión estratégica del equipo de Proyectos TIC y Facultad de Medicina.',
+    type: 'academico',
     date: today,
-    startTime: '08:00',
-    endTime: '10:30',
-    durationMinutes: 150,
+    startTime: '09:00',
+    endTime: '11:00',
+    durationMinutes: 120,
     status: 'confirmado',
-    spaceId: 'space-2',
-    spaceName: 'Estudio Audiovisual 1',
-    responsibleId: 'person-1',
-    responsibleName: 'Alejandro Gómez',
-    attendeesCount: 4,
-    peopleIds: ['person-1', 'person-5'],
-    createdBy: {
-      uid: 'admin-1',
-      name: 'Administrador General',
-      email: 'admin@empresa.com',
-    },
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: 'evt-2',
-    title: 'Simposio Internacional de Medicina',
-    description: 'Conferencia inaugural con transmisión satelital e invitados internacionales.',
-    type: 'conferencia',
-    date: today,
-    startTime: '14:00',
-    endTime: '17:00',
-    durationMinutes: 180,
-    status: 'programado',
     spaceId: 'space-1',
     spaceName: 'Auditorio Mayor',
-    responsibleId: 'person-3',
-    responsibleName: 'Carlos Mendoza',
-    attendeesCount: 130,
-    peopleIds: ['person-2', 'person-3', 'person-4'],
+    responsibleId: 'person-proyectostic',
+    responsibleName: 'Alejandro Proyectos TIC',
+    attendeesCount: 15,
+    peopleIds: ['person-proyectostic'],
     createdBy: {
-      uid: 'admin-1',
-      name: 'Administrador General',
-      email: 'admin@empresa.com',
-    },
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: 'evt-3',
-    title: 'Comité de Planeación Curricular',
-    description: 'Revisión y ajuste del calendario de eventos para el próximo trimestre académico.',
-    type: 'reunion',
-    date: today,
-    startTime: '10:00',
-    endTime: '12:00',
-    durationMinutes: 120,
-    status: 'pendiente_confirmacion',
-    spaceId: 'space-3',
-    spaceName: 'Sala de Juntas de Innovación',
-    responsibleId: 'person-2',
-    responsibleName: 'Dra. Sofía Restrepo',
-    attendeesCount: 12,
-    peopleIds: ['person-2'],
-    createdBy: {
-      uid: 'admin-1',
-      name: 'Administrador General',
-      email: 'admin@empresa.com',
+      uid: 'person-proyectostic',
+      name: 'Alejandro Proyectos TIC',
+      email: 'proyectostic.med@udea.edu.co',
     },
     createdAt: new Date().toISOString(),
   },
 ];
 
-const initialRequests: ParticipationRequest[] = [
-  {
-    id: 'req-1',
-    eventId: 'evt-3',
-    eventTitle: 'Comité de Planeación Curricular',
-    eventDate: today,
-    eventStartTime: '10:00',
-    eventEndTime: '12:00',
-    spaceName: 'Sala de Juntas de Innovación',
-    personId: 'person-2',
-    personName: 'Dra. Sofía Restrepo',
-    personEmail: 'sofia.restrepo@empresa.com',
-    status: 'pendiente',
-    token: 'tk_sofia_curriculo_2026',
-    createdAt: new Date().toISOString(),
-  },
-];
+const initialRequests: ParticipationRequest[] = [];
 
 const initialNotifications: AppNotification[] = [
   {
     id: 'notif-1',
     userId: 'ALL_ADMINS',
-    type: 'solicitud',
-    title: 'Nueva solicitud enviada',
-    message: 'Se ha solicitado la participación de Dra. Sofía Restrepo en "Comité de Planeación Curricular".',
-    eventId: 'evt-3',
-    read: false,
-    createdAt: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
-  },
-  {
-    id: 'notif-2',
-    userId: 'ALL_ADMINS',
     type: 'confirmacion',
-    title: 'Evento Confirmado',
-    message: 'El evento "Grabación Videoclase Magistral" ha sido confirmado para hoy a las 08:00 AM.',
-    eventId: 'evt-1',
+    title: 'Sistema Sincronizado',
+    message: 'Directorio de personas unificado en tiempo real con los usuarios registrados.',
     read: false,
-    createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+    createdAt: new Date().toISOString(),
   },
 ];
 
 const initialAudit: AuditLog[] = [
   {
     id: 'aud-1',
-    action: 'EVENTO_CREADO',
-    entityId: 'evt-1',
-    entityType: 'evento',
-    details: { title: 'Grabación Videoclase Magistral', space: 'Estudio Audiovisual 1' },
-    user: { uid: 'admin-1', name: 'Administrador General', email: 'admin@empresa.com' },
-    timestamp: new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString(),
-  },
-  {
-    id: 'aud-2',
     action: 'ESPACIO_RESERVADO',
     entityId: 'space-1',
     entityType: 'espacio',
-    details: { space: 'Auditorio Mayor', event: 'Simposio Internacional de Medicina' },
-    user: { uid: 'admin-1', name: 'Administrador General', email: 'admin@empresa.com' },
-    timestamp: new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString(),
+    details: { space: 'Auditorio Mayor', event: 'Reunión de Coordinación y Planificación TIC' },
+    user: { uid: 'person-proyectostic', name: 'Alejandro Proyectos TIC', email: 'proyectostic.med@udea.edu.co' },
+    timestamp: new Date().toISOString(),
   },
 ];
 
 const initialUsers: UserProfile[] = [
   {
-    uid: 'admin-1',
-    displayName: 'Alejandro Gómez (Admin)',
-    email: 'alejandro.gomez@udea.edu.co',
-    photoURL: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+    uid: 'person-proyectostic',
+    displayName: 'Alejandro Proyectos TIC',
+    email: 'proyectostic.med@udea.edu.co',
+    photoURL: undefined,
     role: 'administrador',
     status: 'aprobado',
-    createdAt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
+    createdAt: new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString(),
     lastLogin: new Date().toISOString(),
-  },
-  {
-    uid: 'user-2',
-    displayName: 'Dra. Sofía Restrepo',
-    email: 'sofia.restrepo@udea.edu.co',
-    photoURL: 'https://images.unsplash.com/photo-1580489944761-15a19d654956?w=150&auto=format&fit=crop&q=80',
-    role: 'gestor',
-    status: 'aprobado',
-    createdAt: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString(),
-    lastLogin: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-  },
-  {
-    uid: 'user-3',
-    displayName: 'Juan Pablo Montoya',
-    email: 'juan.montoya@udea.edu.co',
-    photoURL: undefined,
-    role: 'lector',
-    status: 'pendiente',
-    createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-    lastLogin: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
   },
 ];
 
 const initialGroups: PeopleGroup[] = [
   {
     id: 'grp-1',
-    name: 'Comité Curricular de Medicina',
-    description: 'Docentes encargados de diseño y ajuste de planes de estudio',
+    name: 'Comité de Proyectos e Innovación TIC',
+    description: 'Equipo encargado de la gestión académica y tecnológica de la Facultad',
     color: '#4F46E5', // Indigo
-    memberIds: ['person-1', 'person-2', 'person-3'],
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: 'grp-2',
-    name: 'Producción de Contenidos y Medios',
-    description: 'Equipo técnico de grabación, videoclases y soporte tecnológico',
-    color: '#059669', // Emerald
-    memberIds: ['person-4', 'person-5'],
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: 'grp-3',
-    name: 'Semilleros e Investigación',
-    description: 'Coordinadores de proyectos científicos y bioética de la Facultad',
-    color: '#D97706', // Amber
-    memberIds: ['person-2', 'person-3'],
+    memberIds: ['person-proyectostic'],
     createdAt: new Date().toISOString(),
   },
 ];
@@ -377,28 +248,14 @@ const initialGroups: PeopleGroup[] = [
 const initialPersonalTasks: PersonalTask[] = [
   {
     id: 'task-1',
-    userId: 'admin-1',
-    title: 'Confirmar aforo y micrófonos en Auditorio Mayor',
-    description: 'Validar requerimientos técnicos para ponentes antes del Simposio.',
+    userId: 'person-proyectostic',
+    title: 'Revisión y bienvenida a nuevos usuarios registrados',
+    description: 'Gestionar roles y permisos desde el módulo de Usuarios.',
     dueDate: today,
-    dueTime: '13:00',
+    dueTime: '10:00',
     priority: 'alta',
     status: 'pendiente',
-    category: 'evento',
-    eventId: 'evt-2',
-    eventTitle: 'Simposio Internacional de Medicina',
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: 'task-2',
-    userId: 'admin-1',
-    title: 'Revisar actas y temas del Comité Curricular',
-    description: 'Consolidar aportes de los docentes previo a la reunión general.',
-    dueDate: today,
-    dueTime: '09:30',
-    priority: 'media',
-    status: 'pendiente',
-    category: 'tarea',
+    category: 'recordatorio',
     createdAt: new Date().toISOString(),
   },
 ];
@@ -441,18 +298,197 @@ const notifListeners = new Set<Listener<AppNotification[]>>();
 const auditListeners = new Set<Listener<AuditLog[]>>();
 const userListeners = new Set<Listener<UserProfile[]>>();
 
-// Inicializar datos si no existen
+// Función para cargar usuarios limpios (sin datos de prueba de @empresa.com)
+export function loadCleanUsers(): UserProfile[] {
+  const users = load<UserProfile[]>(STORAGE_KEYS.USERS_LIST, initialUsers).filter(
+    (u) =>
+      u.email &&
+      !u.email.toLowerCase().includes('@empresa.com') &&
+      !['admin-1', 'user-2', 'user-3'].includes(u.uid)
+  );
+  if (!users.some((u) => u.email.toLowerCase() === 'proyectostic.med@udea.edu.co')) {
+    users.unshift(initialUsers[0]);
+  }
+  return users;
+}
+
+// Sincronizar personas locales directamente desde la lista de usuarios registrados
+export function syncLocalPeopleFromUsers(callback?: (people: Person[]) => void): Person[] {
+  const users = loadCleanUsers();
+  const existingPeople = load<Person[]>(STORAGE_KEYS.PEOPLE, []).filter(
+    (p) =>
+      p.email &&
+      !p.email.toLowerCase().includes('@empresa.com') &&
+      !['person-1', 'person-2', 'person-3', 'person-4', 'person-5'].includes(p.id)
+  );
+
+  const syncedPeople: Person[] = users.map((u) => {
+    const existing = existingPeople.find(
+      (p) => p.id === u.uid || p.email.toLowerCase() === u.email.toLowerCase()
+    );
+    const mapped = userProfileToPerson(u);
+    return {
+      ...mapped,
+      ...(existing
+        ? {
+            roleTitle: existing.roleTitle || mapped.roleTitle,
+            department: existing.department || mapped.department,
+            notes: existing.notes || mapped.notes,
+          }
+        : {}),
+      id: u.uid,
+      email: u.email.toLowerCase().trim(),
+      status: u.status === 'bloqueado' ? 'inactivo' : 'activo',
+    };
+  });
+
+  if (!syncedPeople.some((p) => p.email.toLowerCase() === 'proyectostic.med@udea.edu.co')) {
+    syncedPeople.unshift(initialPeople[0]);
+  }
+
+  save(STORAGE_KEYS.PEOPLE, syncedPeople);
+  if (callback) callback(syncedPeople);
+  return syncedPeople;
+}
+
+// Inicializar datos si no existen y purgar datos de prueba obsoletos
 export function initializeSeedData(): void {
   if (typeof window === 'undefined') return;
+
+  try {
+    // 1. Limpiar usuarios locales de datos de prueba
+    const rawUsers = localStorage.getItem(STORAGE_KEYS.USERS_LIST);
+    let cleanedUsers = initialUsers;
+    if (rawUsers) {
+      try {
+        const parsed = JSON.parse(rawUsers) as UserProfile[];
+        cleanedUsers = parsed.filter(
+          (u) =>
+            u.email &&
+            !u.email.toLowerCase().includes('@empresa.com') &&
+            !['admin-1', 'user-2', 'user-3'].includes(u.uid)
+        );
+      } catch {
+        cleanedUsers = initialUsers;
+      }
+    }
+    if (!cleanedUsers.some((u) => u.email.toLowerCase() === 'proyectostic.med@udea.edu.co')) {
+      cleanedUsers.unshift(initialUsers[0]);
+    }
+    save(STORAGE_KEYS.USERS_LIST, cleanedUsers);
+
+    // 2. Sincronizar personas locales a partir de los usuarios registrados
+    const rawPeople = localStorage.getItem(STORAGE_KEYS.PEOPLE);
+    let existingPeople: Person[] = [];
+    if (rawPeople) {
+      try {
+        existingPeople = (JSON.parse(rawPeople) as Person[]).filter(
+          (p) =>
+            p.email &&
+            !p.email.toLowerCase().includes('@empresa.com') &&
+            !['person-1', 'person-2', 'person-3', 'person-4', 'person-5'].includes(p.id)
+        );
+      } catch {
+        existingPeople = [];
+      }
+    }
+
+    const syncedPeople: Person[] = cleanedUsers.map((u) => {
+      const existing = existingPeople.find(
+        (p) => p.id === u.uid || p.email.toLowerCase() === u.email.toLowerCase()
+      );
+      const mapped = userProfileToPerson(u);
+      return {
+        ...mapped,
+        ...(existing
+          ? {
+              roleTitle: existing.roleTitle || mapped.roleTitle,
+              department: existing.department || mapped.department,
+              notes: existing.notes || mapped.notes,
+            }
+          : {}),
+        id: u.uid,
+        email: u.email.toLowerCase().trim(),
+        status: u.status === 'bloqueado' ? 'inactivo' : 'activo',
+      };
+    });
+
+    if (!syncedPeople.some((p) => p.email.toLowerCase() === 'proyectostic.med@udea.edu.co')) {
+      syncedPeople.unshift(initialPeople[0]);
+    }
+    save(STORAGE_KEYS.PEOPLE, syncedPeople);
+
+    // 3. Limpiar eventos de prueba
+    const rawEvents = localStorage.getItem(STORAGE_KEYS.EVENTS);
+    if (rawEvents) {
+      try {
+        const parsed = JSON.parse(rawEvents) as EventEntity[];
+        const cleaned = parsed.filter(
+          (e) =>
+            !(e.createdBy?.email || '').toLowerCase().includes('@empresa.com') &&
+            !['person-1', 'person-2', 'person-3', 'person-4', 'person-5'].includes(e.responsibleId)
+        );
+        save(STORAGE_KEYS.EVENTS, cleaned.length > 0 ? cleaned : initialEvents);
+      } catch {
+        save(STORAGE_KEYS.EVENTS, initialEvents);
+      }
+    } else {
+      save(STORAGE_KEYS.EVENTS, initialEvents);
+    }
+
+    // 4. Limpiar solicitudes de prueba
+    const rawReqs = localStorage.getItem(STORAGE_KEYS.REQUESTS);
+    if (rawReqs) {
+      try {
+        const parsed = JSON.parse(rawReqs) as ParticipationRequest[];
+        const cleaned = parsed.filter((r) => !r.personEmail.toLowerCase().includes('@empresa.com'));
+        save(STORAGE_KEYS.REQUESTS, cleaned);
+      } catch {
+        save(STORAGE_KEYS.REQUESTS, initialRequests);
+      }
+    } else {
+      save(STORAGE_KEYS.REQUESTS, initialRequests);
+    }
+
+    // 5. Limpiar auditoría de prueba
+    const rawAudit = localStorage.getItem(STORAGE_KEYS.AUDIT);
+    if (rawAudit) {
+      try {
+        const parsed = JSON.parse(rawAudit) as AuditLog[];
+        const cleaned = parsed.filter((a) => !(a.user?.email || '').toLowerCase().includes('@empresa.com'));
+        save(STORAGE_KEYS.AUDIT, cleaned.length > 0 ? cleaned : initialAudit);
+      } catch {
+        save(STORAGE_KEYS.AUDIT, initialAudit);
+      }
+    } else {
+      save(STORAGE_KEYS.AUDIT, initialAudit);
+    }
+
+    // 6. Limpiar grupos con IDs de prueba
+    const rawGroups = localStorage.getItem(STORAGE_KEYS.GROUPS);
+    if (rawGroups) {
+      try {
+        const parsed = JSON.parse(rawGroups) as PeopleGroup[];
+        const cleaned = parsed.map((g) => ({
+          ...g,
+          memberIds: (g.memberIds || []).filter(
+            (id) => !['person-1', 'person-2', 'person-3', 'person-4', 'person-5'].includes(id)
+          ),
+        }));
+        save(STORAGE_KEYS.GROUPS, cleaned.length > 0 ? cleaned : initialGroups);
+      } catch {
+        save(STORAGE_KEYS.GROUPS, initialGroups);
+      }
+    } else {
+      save(STORAGE_KEYS.GROUPS, initialGroups);
+    }
+  } catch (err) {
+    console.warn('Error inicializando / depurando datos locales:', err);
+  }
+
   if (!localStorage.getItem(STORAGE_KEYS.SPACES)) save(STORAGE_KEYS.SPACES, initialSpaces);
-  if (!localStorage.getItem(STORAGE_KEYS.PEOPLE)) save(STORAGE_KEYS.PEOPLE, initialPeople);
-  if (!localStorage.getItem(STORAGE_KEYS.GROUPS)) save(STORAGE_KEYS.GROUPS, initialGroups);
   if (!localStorage.getItem(STORAGE_KEYS.PERSONAL_TASKS)) save(STORAGE_KEYS.PERSONAL_TASKS, initialPersonalTasks);
-  if (!localStorage.getItem(STORAGE_KEYS.EVENTS)) save(STORAGE_KEYS.EVENTS, initialEvents);
-  if (!localStorage.getItem(STORAGE_KEYS.REQUESTS)) save(STORAGE_KEYS.REQUESTS, initialRequests);
   if (!localStorage.getItem(STORAGE_KEYS.NOTIFICATIONS)) save(STORAGE_KEYS.NOTIFICATIONS, initialNotifications);
-  if (!localStorage.getItem(STORAGE_KEYS.AUDIT)) save(STORAGE_KEYS.AUDIT, initialAudit);
-  if (!localStorage.getItem(STORAGE_KEYS.USERS_LIST)) save(STORAGE_KEYS.USERS_LIST, initialUsers);
 }
 
 // Escuchar cambios de otras pestañas
@@ -569,79 +605,92 @@ export function subscribeToSpaces(callback: (spaces: Space[]) => void): () => vo
 export function subscribeToPeople(callback: (people: Person[]) => void): () => void {
   if (isFirebaseConfigured && db) {
     const firestore = db;
-    let hasSeeded = false;
-    const unsub = onSnapshot(
-      collection(firestore, 'people'),
-      async (snapshot) => {
-        if (snapshot.empty && !hasSeeded) {
-          hasSeeded = true;
-          if (auth?.currentUser) {
-            for (const p of initialPeople) {
-              try {
-                await setDoc(doc(firestore, 'people', p.id), p, { merge: true });
-              } catch (e) {
-                console.warn('Error sembrando persona en Firestore:', e);
-              }
+    // Escuchar la colección 'users' para garantizar que las personas sean EXACTAMENTE los usuarios registrados
+    const unsubUsers = onSnapshot(
+      collection(firestore, 'users'),
+      async (usersSnapshot) => {
+        const registeredUsers = usersSnapshot.docs
+          .map((d) => ({ uid: d.id, ...d.data() } as UserProfile))
+          .filter(
+            (u) =>
+              u.email &&
+              !u.email.toLowerCase().includes('@empresa.com') &&
+              !['admin-1', 'user-2', 'user-3'].includes(u.uid)
+          );
+
+        // Asegurar que el superadmin esté presente
+        if (!registeredUsers.some((u) => u.email.toLowerCase() === 'proyectostic.med@udea.edu.co')) {
+          registeredUsers.unshift(initialUsers[0]);
+        }
+
+        // Obtener personas actuales en Firestore para mantener metadatos adicionales y depurar datos de prueba
+        let existingPeople: Person[] = [];
+        try {
+          const snapPeople = await getDocs(collection(firestore, 'people'));
+          existingPeople = snapPeople.docs.map((d) => ({ id: d.id, ...d.data() } as Person));
+
+          // Purgar de Firestore cualquier persona de prueba antigua
+          for (const docItem of snapPeople.docs) {
+            const data = docItem.data();
+            const email = (data.email || '').toLowerCase();
+            if (
+              email.includes('@empresa.com') ||
+              ['person-1', 'person-2', 'person-3', 'person-4', 'person-5'].includes(docItem.id)
+            ) {
+              deleteDoc(doc(firestore, 'people', docItem.id)).catch(console.warn);
             }
           }
-          callback(initialPeople);
-          return;
+        } catch (e) {
+          console.warn('Error leyendo colección people en Firestore:', e);
         }
-        const data = snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as Person));
-        // Asegurar que el perfil de superadmin proyectostic.med@udea.edu.co exista en la lista
-        const hasAdminPerson = data.some((p) => p.email.toLowerCase() === 'proyectostic.med@udea.edu.co');
-        if (!hasAdminPerson && auth?.currentUser) {
-          const adminPerson: Person = {
-            id: 'person-proyectostic',
-            firstName: 'Alejandro',
-            lastName: 'Proyectos TIC',
-            email: 'proyectostic.med@udea.edu.co',
-            roleTitle: 'Líder Proyectos TIC & Superadministrador',
-            department: 'Facultad de Medicina - UdeA',
-            status: 'activo',
-            createdAt: new Date().toISOString(),
+
+        // Construir la lista de personas estrictamente a partir de los usuarios registrados
+        const syncedPeople: Person[] = [];
+        for (const user of registeredUsers) {
+          const existing = existingPeople.find(
+            (p) => p.id === user.uid || p.email.toLowerCase() === user.email.toLowerCase()
+          );
+          const mapped = userProfileToPerson(user);
+          const finalPerson: Person = {
+            ...mapped,
+            ...(existing
+              ? {
+                  roleTitle: existing.roleTitle || mapped.roleTitle,
+                  department: existing.department || mapped.department,
+                  notes: existing.notes || mapped.notes,
+                }
+              : {}),
+            id: user.uid,
+            email: user.email.toLowerCase().trim(),
+            status: user.status === 'bloqueado' ? 'inactivo' : 'activo',
           };
-          setDoc(doc(firestore, 'people', adminPerson.id), adminPerson, { merge: true }).catch(console.warn);
-          data.unshift(adminPerson);
+
+          syncedPeople.push(finalPerson);
+
+          // Si no existía en Firestore o cambió de ID, persistir en Firestore
+          if (!existing || existing.id !== user.uid) {
+            if (auth?.currentUser) {
+              setDoc(doc(firestore, 'people', user.uid), finalPerson, { merge: true }).catch(console.warn);
+            }
+          }
         }
-        callback(data);
+
+        if (!syncedPeople.some((p) => p.email.toLowerCase() === 'proyectostic.med@udea.edu.co')) {
+          syncedPeople.unshift(initialPeople[0]);
+        }
+
+        callback(syncedPeople);
       },
       (error) => {
         console.warn('Firestore people subscription error, fallback local:', error);
-        const localPeople = load<Person[]>(STORAGE_KEYS.PEOPLE, initialPeople);
-        if (!localPeople.some((p) => p.email.toLowerCase() === 'proyectostic.med@udea.edu.co')) {
-          localPeople.unshift({
-            id: 'person-proyectostic',
-            firstName: 'Alejandro',
-            lastName: 'Proyectos TIC',
-            email: 'proyectostic.med@udea.edu.co',
-            roleTitle: 'Líder Proyectos TIC & Superadministrador',
-            department: 'Facultad de Medicina - UdeA',
-            status: 'activo',
-            createdAt: new Date().toISOString(),
-          });
-          save(STORAGE_KEYS.PEOPLE, localPeople);
-        }
-        callback(localPeople);
+        syncLocalPeopleFromUsers(callback);
       }
     );
-    return unsub;
+    return unsubUsers;
   }
-  const localPeople = load<Person[]>(STORAGE_KEYS.PEOPLE, initialPeople);
-  if (!localPeople.some((p) => p.email.toLowerCase() === 'proyectostic.med@udea.edu.co')) {
-    localPeople.unshift({
-      id: 'person-proyectostic',
-      firstName: 'Alejandro',
-      lastName: 'Proyectos TIC',
-      email: 'proyectostic.med@udea.edu.co',
-      roleTitle: 'Líder Proyectos TIC & Superadministrador',
-      department: 'Facultad de Medicina - UdeA',
-      status: 'activo',
-      createdAt: new Date().toISOString(),
-    });
-    save(STORAGE_KEYS.PEOPLE, localPeople);
-  }
-  callback(localPeople);
+
+  // Local storage fallback
+  syncLocalPeopleFromUsers(callback);
   peopleListeners.add(callback);
   return () => peopleListeners.delete(callback);
 }
@@ -781,17 +830,37 @@ export function subscribeToUsers(callback: (users: UserProfile[]) => void): () =
     const unsub = onSnapshot(
       collection(db, 'users'),
       (snapshot) => {
-        const data = snapshot.docs.map((d) => ({ uid: d.id, ...d.data() } as UserProfile));
+        const data = snapshot.docs
+          .map((d) => ({ uid: d.id, ...d.data() } as UserProfile))
+          .filter(
+            (u) =>
+              u.email &&
+              !u.email.toLowerCase().includes('@empresa.com') &&
+              !['admin-1', 'user-2', 'user-3'].includes(u.uid)
+          );
+
+        // Purgar de Firestore usuarios ficticios si existen
+        for (const docItem of snapshot.docs) {
+          const uData = docItem.data();
+          const email = (uData.email || '').toLowerCase();
+          if (email.includes('@empresa.com') || ['admin-1', 'user-2', 'user-3'].includes(docItem.id)) {
+            deleteDoc(doc(db!, 'users', docItem.id)).catch(console.warn);
+          }
+        }
+
+        if (!data.some((u) => u.email.toLowerCase() === 'proyectostic.med@udea.edu.co')) {
+          data.unshift(initialUsers[0]);
+        }
         callback(data);
       },
       (error) => {
         console.warn('Firestore users subscription error, fallback local:', error);
-        callback(load(STORAGE_KEYS.USERS_LIST, initialUsers));
+        callback(loadCleanUsers());
       }
     );
     return unsub;
   }
-  callback(load(STORAGE_KEYS.USERS_LIST, initialUsers));
+  callback(loadCleanUsers());
   userListeners.add(callback);
   return () => userListeners.delete(callback);
 }
@@ -811,11 +880,32 @@ export async function updateUserRoleAndStatus(
       updatedAt: now,
       ...(approvedBy ? { approvedBy, approvedAt: now } : {}),
     });
+
+    // Actualizar también la persona correspondiente en people
+    try {
+      const personRef = doc(db, 'people', uid);
+      const personSnap = await getDoc(personRef);
+      let roleTitle = 'Usuario Institucional';
+      if (newRole === 'administrador') roleTitle = 'Administrador del Sistema';
+      else if (newRole === 'gestor') roleTitle = 'Gestor de Eventos & Espacios';
+      else if (newRole === 'usuario') roleTitle = 'Docente / Investigador';
+      else if (newRole === 'lector') roleTitle = 'Lector Institucional';
+
+      if (personSnap.exists()) {
+        await updateDoc(personRef, {
+          status: newStatus === 'bloqueado' ? 'inactivo' : 'activo',
+          roleTitle,
+          updatedAt: now,
+        });
+      }
+    } catch (e) {
+      console.warn('Error sincronizando persona tras actualizar rol/estado:', e);
+    }
     return;
   }
 
   // Local storage fallback
-  const current = load<UserProfile[]>(STORAGE_KEYS.USERS_LIST, initialUsers);
+  const current = loadCleanUsers();
   const idx = current.findIndex((u) => u.uid === uid);
   if (idx >= 0) {
     current[idx] = {
@@ -827,15 +917,19 @@ export async function updateUserRoleAndStatus(
     };
     save(STORAGE_KEYS.USERS_LIST, current);
     userListeners.forEach((fn) => fn(current));
+
+    // Sincronizar personas locales inmediatamente
+    const people = syncLocalPeopleFromUsers();
+    peopleListeners.forEach((fn) => fn(people));
   }
 }
 
 // Operaciones de Mutación (Eventos) en la Nube y Local
 export async function saveEvent(event: Omit<EventEntity, 'id'> & { id?: string }): Promise<string> {
   const user = load<UserProfile>(STORAGE_KEYS.USER, {
-    uid: auth?.currentUser?.uid || 'admin-1',
-    displayName: auth?.currentUser?.displayName || 'Usuario UdeA',
-    email: auth?.currentUser?.email || 'usuario@udea.edu.co',
+    uid: auth?.currentUser?.uid || 'person-proyectostic',
+    displayName: auth?.currentUser?.displayName || 'Alejandro Proyectos TIC',
+    email: auth?.currentUser?.email || 'proyectostic.med@udea.edu.co',
     role: 'administrador',
     status: 'aprobado',
     createdAt: new Date().toISOString(),
@@ -940,9 +1034,9 @@ export async function saveEvent(event: Omit<EventEntity, 'id'> & { id?: string }
 
 export async function deleteEvent(eventId: string): Promise<void> {
   const user = load<UserProfile>(STORAGE_KEYS.USER, {
-    uid: auth?.currentUser?.uid || 'admin-1',
-    displayName: auth?.currentUser?.displayName || 'Usuario UdeA',
-    email: auth?.currentUser?.email || 'usuario@udea.edu.co',
+    uid: auth?.currentUser?.uid || 'person-proyectostic',
+    displayName: auth?.currentUser?.displayName || 'Alejandro Proyectos TIC',
+    email: auth?.currentUser?.email || 'proyectostic.med@udea.edu.co',
     role: 'administrador',
     status: 'aprobado',
     createdAt: '',
@@ -1027,9 +1121,9 @@ export async function saveSpace(space: Omit<Space, 'id'> & { id?: string }): Pro
 
 export async function deleteSpace(spaceId: string): Promise<void> {
   const user = load<UserProfile>(STORAGE_KEYS.USER, {
-    uid: auth?.currentUser?.uid || 'admin-1',
-    displayName: auth?.currentUser?.displayName || 'Usuario UdeA',
-    email: auth?.currentUser?.email || 'usuario@udea.edu.co',
+    uid: auth?.currentUser?.uid || 'person-proyectostic',
+    displayName: auth?.currentUser?.displayName || 'Alejandro Proyectos TIC',
+    email: auth?.currentUser?.email || 'proyectostic.med@udea.edu.co',
     role: 'administrador',
     status: 'aprobado',
     createdAt: '',
@@ -1077,6 +1171,10 @@ export async function deleteSpace(spaceId: string): Promise<void> {
 export async function savePerson(person: Omit<Person, 'id'> & { id?: string }): Promise<string> {
   const cleanEmail = person.email.trim().toLowerCase();
 
+  if (cleanEmail.includes('@empresa.com')) {
+    throw new Error('No se permiten correos de prueba ficticios con dominio @empresa.com.');
+  }
+
   // Validar que no exista otra persona con el mismo correo electrónico
   if (isFirebaseConfigured && db) {
     try {
@@ -1106,14 +1204,38 @@ export async function savePerson(person: Omit<Person, 'id'> & { id?: string }): 
   if (isFirebaseConfigured && db) {
     try {
       if (!id) {
-        id = `person-${Date.now()}`;
+        id = `user-${Date.now()}`;
       }
       const personData: Person = {
         ...person,
         id,
+        email: cleanEmail,
         createdAt: person.createdAt || now,
       };
       await setDoc(doc(db, 'people', id), personData, { merge: true });
+
+      // Sincronizar automáticamente en la colección de usuarios registrados
+      const userRef = doc(db, 'users', id);
+      const userSnap = await getDoc(userRef);
+      if (userSnap.exists()) {
+        await updateDoc(userRef, {
+          displayName: `${person.firstName} ${person.lastName}`.trim(),
+          status: person.status === 'inactivo' ? 'bloqueado' : 'aprobado',
+          updatedAt: now,
+        });
+      } else {
+        const newUser: UserProfile = {
+          uid: id,
+          displayName: `${person.firstName} ${person.lastName}`.trim(),
+          email: cleanEmail,
+          role: person.roleTitle.toLowerCase().includes('admin') ? 'administrador' : 'usuario',
+          status: person.status === 'inactivo' ? 'bloqueado' : 'aprobado',
+          createdAt: person.createdAt || now,
+          lastLogin: now,
+        };
+        await setDoc(userRef, newUser, { merge: true });
+      }
+
       return id;
     } catch (err) {
       console.error('Error guardando persona en Firestore:', err);
@@ -1122,23 +1244,48 @@ export async function savePerson(person: Omit<Person, 'id'> & { id?: string }): 
 
   if (id) {
     const idx = current.findIndex((p) => p.id === id);
-    if (idx >= 0) current[idx] = { ...current[idx], ...person, id };
-    else current.push({ ...person, id, createdAt: now });
+    if (idx >= 0) current[idx] = { ...current[idx], ...person, id, email: cleanEmail };
+    else current.push({ ...person, id, email: cleanEmail, createdAt: now });
   } else {
-    id = `person-${Date.now()}`;
-    current.push({ ...person, id, createdAt: now });
+    id = `user-${Date.now()}`;
+    current.push({ ...person, id, email: cleanEmail, createdAt: now });
   }
 
   save(STORAGE_KEYS.PEOPLE, current);
   peopleListeners.forEach((fn) => fn(current));
+
+  // Mantener lista local de usuarios sincronizada 1:1
+  const users = loadCleanUsers();
+  const userIdx = users.findIndex((u) => u.uid === id || u.email.toLowerCase() === cleanEmail);
+  if (userIdx >= 0) {
+    users[userIdx] = {
+      ...users[userIdx],
+      displayName: `${person.firstName} ${person.lastName}`.trim(),
+      status: person.status === 'inactivo' ? 'bloqueado' : 'aprobado',
+      updatedAt: now,
+    };
+  } else {
+    users.push({
+      uid: id,
+      displayName: `${person.firstName} ${person.lastName}`.trim(),
+      email: cleanEmail,
+      role: person.roleTitle.toLowerCase().includes('admin') ? 'administrador' : 'usuario',
+      status: person.status === 'inactivo' ? 'bloqueado' : 'aprobado',
+      createdAt: person.createdAt || now,
+      lastLogin: now,
+    });
+  }
+  save(STORAGE_KEYS.USERS_LIST, users);
+  userListeners.forEach((fn) => fn(users));
+
   return id;
 }
 
 export async function deletePerson(personId: string): Promise<void> {
   const user = load<UserProfile>(STORAGE_KEYS.USER, {
-    uid: auth?.currentUser?.uid || 'admin-1',
-    displayName: auth?.currentUser?.displayName || 'Usuario UdeA',
-    email: auth?.currentUser?.email || 'usuario@udea.edu.co',
+    uid: auth?.currentUser?.uid || 'person-proyectostic',
+    displayName: auth?.currentUser?.displayName || 'Alejandro Proyectos TIC',
+    email: auth?.currentUser?.email || 'proyectostic.med@udea.edu.co',
     role: 'administrador',
     status: 'aprobado',
     createdAt: '',

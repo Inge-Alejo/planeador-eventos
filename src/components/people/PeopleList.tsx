@@ -67,7 +67,7 @@ export const PeopleList: React.FC<PeopleListProps> = ({
               }`}
             >
               <Users className="w-4 h-4" />
-              <span>Colaboradores ({people.length})</span>
+              <span>Colaboradores & Usuarios ({people.length})</span>
             </button>
             <button
               onClick={() => setActiveSubTab('groups')}
@@ -81,6 +81,10 @@ export const PeopleList: React.FC<PeopleListProps> = ({
               <span>Grupos y Equipos ({groups.length})</span>
             </button>
           </div>
+          <span className="hidden lg:inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-[11px] font-medium bg-emerald-50 text-emerald-800 border border-emerald-200/60">
+            <CheckCircle className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+            <span>Sincronizado en tiempo real con usuarios registrados</span>
+          </span>
         </div>
 
         <div className="flex items-center gap-3">
@@ -143,10 +147,21 @@ export const PeopleList: React.FC<PeopleListProps> = ({
                         {person.lastName.charAt(0)}
                       </div>
                       <div>
-                        <h3 className="text-sm font-bold text-slate-900 leading-tight">
-                          {person.firstName} {person.lastName}
-                        </h3>
-                        <p className="text-xs text-slate-500 font-medium">{person.roleTitle}</p>
+                        <div className="flex items-center gap-2">
+                          <h3 className="text-sm font-bold text-slate-900 leading-tight">
+                            {person.firstName} {person.lastName}
+                          </h3>
+                          <span
+                            className={`inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-semibold ${
+                              person.status === 'activo'
+                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200/60'
+                                : 'bg-slate-100 text-slate-600 border border-slate-200'
+                            }`}
+                          >
+                            {person.status === 'activo' ? 'Activo' : 'Inactivo'}
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-500 font-medium mt-0.5">{person.roleTitle}</p>
                       </div>
                     </div>
 

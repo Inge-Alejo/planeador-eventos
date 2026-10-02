@@ -22,7 +22,7 @@ import {
   getDocs,
 } from 'firebase/firestore';
 import { sendNewUserRegistrationNotificationToSuperAdmin } from '../services/emailService';
-import { addNotification } from '../services/store';
+import { addNotification, savePerson, userProfileToPerson } from '../services/store';
 
 interface AuthContextType {
   user: UserProfile | null;
@@ -132,6 +132,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 ...initialProfile,
                 timestamp: serverTimestamp(),
               });
+              try {
+                const personData = userProfileToPerson(initialProfile);
+                await setDoc(doc(db!, 'people', fbUser.uid), personData, { merge: true });
+              } catch (e) {
+                console.warn('Error sincronizando persona en Firestore al autenticar:', e);
+              }
               setUser(initialProfile);
               localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(initialProfile));
             } else {
@@ -244,6 +250,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           },
           { merge: true }
         );
+        try {
+          const personData = userProfileToPerson(newProfile);
+          await setDoc(doc(db, 'people', userCred.user.uid), personData, { merge: true });
+        } catch (e) {
+          console.warn('Error sincronizando persona en Firestore al registrar:', e);
+        }
         setUser(newProfile);
         localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(newProfile));
 
@@ -292,6 +304,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         };
         savedUsers.push(demoProfile);
         localStorage.setItem('eventflow_users', JSON.stringify(savedUsers));
+        try {
+          const personData = userProfileToPerson(demoProfile);
+          await savePerson(personData);
+        } catch (e) {
+          console.warn('Error sincronizando persona local al registrar:', e);
+        }
         setUser(demoProfile);
         localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(demoProfile));
 

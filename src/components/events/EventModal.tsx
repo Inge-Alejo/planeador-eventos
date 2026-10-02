@@ -18,6 +18,7 @@ import { EventEntity, Space, Person, EventType, EventStatus, PeopleGroup } from 
 import { detectConflicts } from '../../services/conflictEngine';
 import { calculateDuration, format12Hour, getBogotaToday } from '../../lib/timezone';
 import { useDismissable } from '../../hooks/useDismissable';
+import { useAuth } from '../../context/AuthContext';
 
 interface EventModalProps {
   isOpen: boolean;
@@ -46,6 +47,7 @@ export const EventModal: React.FC<EventModalProps> = ({
   existingEvents,
   initialPreset,
 }) => {
+  const { user } = useAuth();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [type, setType] = useState<EventType>('academico');
@@ -195,8 +197,12 @@ export const EventModal: React.FC<EventModalProps> = ({
         isVirtual: Boolean(isVirtual),
         notes: notes.trim(),
         peopleIds: selectedPeopleIds,
-        createdBy: { uid: 'user', name: 'Usuario', email: 'user@empresa.com' },
-        createdAt: new Date().toISOString(),
+        createdBy: eventToEdit?.createdBy || {
+          uid: user?.uid || 'person-proyectostic',
+          name: user?.displayName || 'Alejandro Proyectos TIC',
+          email: user?.email || 'proyectostic.med@udea.edu.co',
+        },
+        createdAt: eventToEdit?.createdAt || new Date().toISOString(),
       };
 
       await onSave(
