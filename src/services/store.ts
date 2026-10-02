@@ -603,94 +603,59 @@ export function subscribeToSpaces(callback: (spaces: Space[]) => void): () => vo
 }
 
 export function subscribeToPeople(callback: (people: Person[]) => void): () => void {
+  // 1. Entregar inmediatamente los datos en caché para visibilidad instantánea en cualquier sesión/dispositivo
+  const cachedPeople = load<Person[]>(STORAGE_KEYS.PEOPLE, initialPeople).filter(
+    (p) =>
+      p.email &&
+      !p.email.toLowerCase().includes('@empresa.com') &&
+      !['person-1', 'person-2', 'person-3', 'person-4', 'person-5'].includes(p.id)
+  );
+  if (!cachedPeople.some((p) => p.email.toLowerCase() === 'proyectostic.med@udea.edu.co')) {
+    cachedPeople.unshift(initialPeople[0]);
+  }
+  callback(cachedPeople);
+
+  // 2. Suscripción en vivo a Firestore
   if (isFirebaseConfigured && db) {
     const firestore = db;
-    // Escuchar la colección 'users' para garantizar que las personas sean EXACTAMENTE los usuarios registrados
-    const unsubUsers = onSnapshot(
-      collection(firestore, 'users'),
-      async (usersSnapshot) => {
-        const registeredUsers = usersSnapshot.docs
-          .map((d) => ({ uid: d.id, ...d.data() } as UserProfile))
-          .filter(
-            (u) =>
-              u.email &&
-              !u.email.toLowerCase().includes('@empresa.com') &&
-              !['admin-1', 'user-2', 'user-3'].includes(u.uid)
-          );
+    const unsub = onSnapshot(
+      collection(firestore, 'people'),
+      (snapshot) => {
+        const rawDocs = snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as Person));
+        const cleanPeople: Person[] = [];
 
-        // Asegurar que el superadmin esté presente
-        if (!registeredUsers.some((u) => u.email.toLowerCase() === 'proyectostic.med@udea.edu.co')) {
-          registeredUsers.unshift(initialUsers[0]);
-        }
-
-        // Obtener personas actuales en Firestore para mantener metadatos adicionales y depurar datos de prueba
-        let existingPeople: Person[] = [];
-        try {
-          const snapPeople = await getDocs(collection(firestore, 'people'));
-          existingPeople = snapPeople.docs.map((d) => ({ id: d.id, ...d.data() } as Person));
-
-          // Purgar de Firestore cualquier persona de prueba antigua
-          for (const docItem of snapPeople.docs) {
-            const data = docItem.data();
-            const email = (data.email || '').toLowerCase();
-            if (
-              email.includes('@empresa.com') ||
-              ['person-1', 'person-2', 'person-3', 'person-4', 'person-5'].includes(docItem.id)
-            ) {
-              deleteDoc(doc(firestore, 'people', docItem.id)).catch(console.warn);
-            }
-          }
-        } catch (e) {
-          console.warn('Error leyendo colección people en Firestore:', e);
-        }
-
-        // Construir la lista de personas estrictamente a partir de los usuarios registrados
-        const syncedPeople: Person[] = [];
-        for (const user of registeredUsers) {
-          const existing = existingPeople.find(
-            (p) => p.id === user.uid || p.email.toLowerCase() === user.email.toLowerCase()
-          );
-          const mapped = userProfileToPerson(user);
-          const finalPerson: Person = {
-            ...mapped,
-            ...(existing
-              ? {
-                  roleTitle: existing.roleTitle || mapped.roleTitle,
-                  department: existing.department || mapped.department,
-                  notes: existing.notes || mapped.notes,
-                }
-              : {}),
-            id: user.uid,
-            email: user.email.toLowerCase().trim(),
-            status: user.status === 'bloqueado' ? 'inactivo' : 'activo',
-          };
-
-          syncedPeople.push(finalPerson);
-
-          // Si no existía en Firestore o cambió de ID, persistir en Firestore
-          if (!existing || existing.id !== user.uid) {
-            if (auth?.currentUser) {
-              setDoc(doc(firestore, 'people', user.uid), finalPerson, { merge: true }).catch(console.warn);
-            }
+        for (const p of rawDocs) {
+          const email = (p.email || '').toLowerCase();
+          if (
+            email.includes('@empresa.com') ||
+            ['person-1', 'person-2', 'person-3', 'person-4', 'person-5'].includes(p.id)
+          ) {
+            deleteDoc(doc(firestore, 'people', p.id)).catch(console.warn);
+          } else {
+            cleanPeople.push(p);
           }
         }
 
-        if (!syncedPeople.some((p) => p.email.toLowerCase() === 'proyectostic.med@udea.edu.co')) {
-          syncedPeople.unshift(initialPeople[0]);
+        // Asegurar que el superadmin institucional siempre esté presente
+        if (!cleanPeople.some((p) => p.email.toLowerCase() === 'proyectostic.med@udea.edu.co')) {
+          cleanPeople.unshift(initialPeople[0]);
+          if (auth?.currentUser) {
+            setDoc(doc(firestore, 'people', initialPeople[0].id), initialPeople[0], { merge: true }).catch(console.warn);
+          }
         }
 
-        callback(syncedPeople);
+        save(STORAGE_KEYS.PEOPLE, cleanPeople);
+        callback(cleanPeople);
       },
       (error) => {
         console.warn('Firestore people subscription error, fallback local:', error);
         syncLocalPeopleFromUsers(callback);
       }
     );
-    return unsubUsers;
+    return unsub;
   }
 
-  // Local storage fallback
-  syncLocalPeopleFromUsers(callback);
+  // Fallback local
   peopleListeners.add(callback);
   return () => peopleListeners.delete(callback);
 }
@@ -826,6 +791,7 @@ export function subscribeToAudit(callback: (logs: AuditLog[]) => void): () => vo
 }
 
 export function subscribeToUsers(callback: (users: UserProfile[]) => void): () => void {
+  callback(loadCleanUsers());
   if (isFirebaseConfigured && db) {
     const unsub = onSnapshot(
       collection(db, 'users'),
