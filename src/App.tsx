@@ -63,6 +63,7 @@ const MainApp: React.FC = () => {
     markAllNotificationsAsRead,
     updateUserRoleAndStatus,
     deleteUser,
+    saveEventTask,
     updateEventTaskStatus,
     addEventTaskUpdate,
     resolveExceptionalApproval,
@@ -333,6 +334,7 @@ const MainApp: React.FC = () => {
               onToggleTask={togglePersonalTask}
               onDeleteTask={deletePersonalTask}
               onSaveTask={savePersonalTask}
+              onSaveEventTask={saveEventTask}
               onRespondRequest={async (reqId, resp) => {
                 const req = requests.find((r) => r.id === reqId);
                 if (req) {

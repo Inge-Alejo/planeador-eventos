@@ -7,6 +7,7 @@ import {
   PersonalTask,
   PersonalTaskPriority,
   UserProfile,
+  EventTaskStage,
 } from '../../types';
 import {
   CheckSquare,
@@ -25,6 +26,8 @@ import {
   Flame,
   Award,
   Sparkles,
+  Link2,
+  CalendarCheck,
 } from 'lucide-react';
 import {
   formatFriendlyDate,
@@ -48,6 +51,7 @@ interface PersonalTasksViewProps {
   onSaveTask: (task: Omit<PersonalTask, 'id' | 'createdAt'> & { id?: string }) => Promise<any>;
   onRespondRequest: (requestId: string, response: 'confirmada' | 'rechazada') => Promise<void>;
   onSelectEvent: (eventId: string) => void;
+  onSaveEventTask?: (eventId: string, task: any) => Promise<any>;
 }
 
 export const PersonalTasksView: React.FC<PersonalTasksViewProps> = ({
@@ -62,6 +66,7 @@ export const PersonalTasksView: React.FC<PersonalTasksViewProps> = ({
   onSaveTask,
   onRespondRequest,
   onSelectEvent,
+  onSaveEventTask,
 }) => {
   const today = getBogotaToday();
 
@@ -111,11 +116,23 @@ export const PersonalTasksView: React.FC<PersonalTasksViewProps> = ({
   const [newDueTime, setNewDueTime] = useState('12:00');
   const [newPriority, setNewPriority] = useState<PersonalTaskPriority>('media');
   const [newCategory, setNewCategory] = useState<'recordatorio' | 'tarea' | 'seguimiento' | 'evento'>('recordatorio');
+  const [selectedEventId, setSelectedEventId] = useState<string>('');
+  const [taskStage, setTaskStage] = useState<EventTaskStage>('durante');
 
   const { contentRef: taskModalRef, handleBackdropClick: handleTaskModalBackdropClick } = useDismissable({
     onDismiss: () => setIsNewTaskModalOpen(false),
     isOpen: isNewTaskModalOpen,
   });
+
+  // Eventos disponibles para vincular en el selector (no cancelados)
+  const availableEventsForDropdown = useMemo(() => {
+    return events
+      .filter((e) => e.status !== 'cancelado')
+      .sort((a, b) => {
+        if (a.date !== b.date) return a.date.localeCompare(b.date);
+        return a.startTime.localeCompare(b.startTime);
+      });
+  }, [events]);
 
   // Filtrado de tareas
   const filteredTasks = useMemo(() => {
@@ -164,6 +181,8 @@ export const PersonalTasksView: React.FC<PersonalTasksViewProps> = ({
     e.preventDefault();
     if (!user || !newTitle.trim()) return;
 
+    const chosenEvent = selectedEventId ? events.find((evt) => evt.id === selectedEventId) : null;
+
     await onSaveTask({
       userId: user.uid,
       title: newTitle.trim(),
@@ -172,11 +191,38 @@ export const PersonalTasksView: React.FC<PersonalTasksViewProps> = ({
       dueTime: newDueTime,
       priority: newPriority,
       status: 'pendiente',
-      category: newCategory,
+      category: selectedEventId ? 'evento' : newCategory,
+      eventId: selectedEventId || undefined,
+      eventTitle: chosenEvent?.title || undefined,
     });
+
+    // Si el usuario decidió vincular la tarea al evento, anidarla también en las tareas del evento
+    if (selectedEventId && onSaveEventTask) {
+      try {
+        await onSaveEventTask(selectedEventId, {
+          title: newTitle.trim(),
+          description: newDescription.trim(),
+          stage: taskStage,
+          status: 'pendiente',
+          priority: newPriority,
+          responsibleIds: currentPerson?.id ? [currentPerson.id] : [user.uid],
+          responsibleNames: currentPerson
+            ? [`${currentPerson.firstName} ${currentPerson.lastName}`]
+            : [user.displayName || user.email],
+          deadlineDate: newDueDate,
+          deadlineTime: newDueTime,
+          exclusiveAttention: false,
+          updates: [],
+        });
+      } catch (err) {
+        console.warn('Nota: Se guardó la tarea personal aunque hubo advertencia al anidar en el evento:', err);
+      }
+    }
 
     setNewTitle('');
     setNewDescription('');
+    setSelectedEventId('');
+    setTaskStage('durante');
     setIsNewTaskModalOpen(false);
   };
 
@@ -573,7 +619,7 @@ export const PersonalTasksView: React.FC<PersonalTasksViewProps> = ({
                         </p>
                       )}
 
-                      <div className="flex items-center gap-3 text-[11px] text-slate-400 mt-2 font-medium">
+                      <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-400 mt-2 font-medium">
                         {task.dueDate && (
                           <span
                             className={`flex items-center gap-1 ${
@@ -588,6 +634,19 @@ export const PersonalTasksView: React.FC<PersonalTasksViewProps> = ({
                               : `Vence el ${task.dueDate}`}
                             {task.dueTime && ` a las ${format12Hour(task.dueTime)}`}
                           </span>
+                        )}
+
+                        {task.eventTitle && (
+                          <button
+                            type="button"
+                            onClick={() => task.eventId && onSelectEvent(task.eventId)}
+                            className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-indigo-700 bg-indigo-50/90 border border-indigo-200/80 rounded-md px-2 py-0.5 hover:bg-indigo-100 hover:text-indigo-900 transition-all cursor-pointer"
+                            title="Hacer clic para ver el evento en la plataforma"
+                          >
+                            <CalendarCheck className="w-3 h-3 text-indigo-600 shrink-0" />
+                            <span className="truncate max-w-[220px]">Evento: {task.eventTitle}</span>
+                            <span className="text-[10px] text-indigo-400">↗</span>
+                          </button>
                         )}
                       </div>
                     </div>
@@ -719,6 +778,90 @@ export const PersonalTasksView: React.FC<PersonalTasksViewProps> = ({
                     <option value="evento">Evento</option>
                   </select>
                 </div>
+              </div>
+
+              {/* Selector Opcional para Anidar la Tarea a un Evento */}
+              <div className="pt-2 border-t border-slate-100">
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5 text-indigo-900">
+                    <Link2 className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>Anidar a un Evento</span>
+                  </span>
+                  <span className="text-[10px] text-slate-400 font-semibold lowercase bg-slate-100 px-1.5 py-0.5 rounded">
+                    opcional
+                  </span>
+                </label>
+                <select
+                  value={selectedEventId}
+                  onChange={(e) => {
+                    const eid = e.target.value;
+                    setSelectedEventId(eid);
+                    if (eid) {
+                      const found = events.find((evt) => evt.id === eid);
+                      if (found) {
+                        setNewDueDate(found.date);
+                        setNewDueTime(found.startTime);
+                        setNewCategory('evento');
+                      }
+                    }
+                  }}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-medium text-slate-700 truncate"
+                >
+                  <option value="">-- Sin anidar (Tarea personal independiente) --</option>
+                  {availableEventsForDropdown.map((evt) => (
+                    <option key={evt.id} value={evt.id}>
+                      📅 {evt.date} • {evt.title} ({evt.isVirtual ? 'Virtual' : evt.spaceName || 'Presencial'})
+                    </option>
+                  ))}
+                </select>
+
+                {selectedEventId && (
+                  <div className="mt-2.5 bg-indigo-50/70 border border-indigo-200/80 rounded-xl p-3 space-y-2 animate-in fade-in slide-in-from-top-1 duration-200">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-bold text-indigo-900 uppercase tracking-wider">
+                        Etapa del Evento
+                      </span>
+                      <span className="text-[10px] text-indigo-600 font-medium">
+                        Se anidará en la agenda oficial
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setTaskStage('previa')}
+                        className={`px-2 py-1.5 rounded-lg text-xs font-bold transition-all border ${
+                          taskStage === 'previa'
+                            ? 'bg-amber-600 text-white border-amber-600 shadow-xs'
+                            : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                        }`}
+                      >
+                        📌 Previa
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setTaskStage('durante')}
+                        className={`px-2 py-1.5 rounded-lg text-xs font-bold transition-all border ${
+                          taskStage === 'durante'
+                            ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
+                            : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                        }`}
+                      >
+                        ⚡ Durante
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setTaskStage('posterior')}
+                        className={`px-2 py-1.5 rounded-lg text-xs font-bold transition-all border ${
+                          taskStage === 'posterior'
+                            ? 'bg-purple-600 text-white border-purple-600 shadow-xs'
+                            : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                        }`}
+                      >
+                        🏁 Posterior
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2.5">
