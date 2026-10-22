@@ -10,6 +10,9 @@ import { SpaceList } from './components/spaces/SpaceList';
 import { PeopleList } from './components/people/PeopleList';
 import { RequestsList } from './components/requests/RequestsList';
 import { ReportsView } from './components/reports/ReportsView';
+import { SuperAdminMetricsView } from './components/metrics/SuperAdminMetricsView';
+import { SuperAdminReportsView } from './components/reports/SuperAdminReportsView';
+import { isInstitutionalSuperAdmin } from './services/businessRules';
 import { AuditView } from './components/audit/AuditView';
 import { EventModal } from './components/events/EventModal';
 import { EventDetailDrawer } from './components/events/EventDetailDrawer';
@@ -29,6 +32,7 @@ import confetti from 'canvas-confetti';
 
 const MainApp: React.FC = () => {
   const { user, isGuest, enterAsGuest, canEdit, isAdmin } = useAuth();
+  const isSuperAdmin = isInstitutionalSuperAdmin(user);
   const {
     events,
     spaces,
@@ -59,6 +63,14 @@ const MainApp: React.FC = () => {
     markAllNotificationsAsRead,
     updateUserRoleAndStatus,
     deleteUser,
+    updateEventTaskStatus,
+    addEventTaskUpdate,
+    resolveExceptionalApproval,
+    reportSchedules,
+    saveReportSchedule,
+    deleteReportSchedule,
+    reportLogs,
+    saveReportExecutionLog,
   } = useEventFlow(user?.uid);
 
   const [activeTab, setActiveTab] = useState<ActiveTab>('dashboard');
@@ -417,12 +429,27 @@ const MainApp: React.FC = () => {
             />
           )}
 
-          {activeTab === 'reportes' && (
-            <ReportsView
+          {activeTab === 'metricas' && isSuperAdmin && (
+            <SuperAdminMetricsView
               events={events}
-              spaces={spaces}
               people={people}
-              auditLogs={auditLogs}
+              groups={groups}
+              spaces={spaces}
+              onSelectEvent={(evtId: string) => setSelectedEventId(evtId)}
+            />
+          )}
+
+          {activeTab === 'reportes' && isSuperAdmin && (
+            <SuperAdminReportsView
+              events={events}
+              people={people}
+              groups={groups}
+              spaces={spaces}
+              schedules={reportSchedules}
+              logs={reportLogs}
+              onSaveSchedule={saveReportSchedule}
+              onDeleteSchedule={deleteReportSchedule}
+              onSaveExecutionLog={saveReportExecutionLog}
             />
           )}
 
@@ -483,6 +510,15 @@ const MainApp: React.FC = () => {
         requests={requests}
         auditLogs={auditLogs}
         onOpenSimulatedEmail={(req) => setSimulatedEmailRequest(req)}
+        onUpdateTaskStatus={updateEventTaskStatus}
+        onAddTaskUpdate={addEventTaskUpdate}
+        onResolveExceptionalApproval={async (eventId, decision, notes) => {
+          await resolveExceptionalApproval(eventId, decision, notes, {
+            uid: user?.uid || 'superadmin',
+            name: user?.displayName || 'Superadministrador Institucional UdeA',
+            email: user?.email || 'proyectostic.med@udea.edu.co',
+          });
+        }}
       />
 
       {/* Modal Crear / Editar Espacio */}

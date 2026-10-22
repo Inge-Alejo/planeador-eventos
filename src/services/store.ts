@@ -11,10 +11,24 @@ import {
   UserProfile,
   UserRole,
   UserAccountStatus,
+  EventTask,
+  EventTaskStatus,
+  EventTaskUpdate,
+  ExceptionalApproval,
+  AutomatedReportSchedule,
+  ReportExecutionLog,
 } from '../types';
 import { getBogotaToday } from '../lib/timezone';
 import { db, isFirebaseConfigured, auth } from '../lib/firebase';
-import { sendParticipationEmail } from './emailService';
+import {
+  sendParticipationEmail,
+  sendExceptionalRequestToSuperAdmin,
+  sendExceptionalResolutionToRequester,
+} from './emailService';
+import {
+  isInstitutionalSuperAdmin,
+  generateRecurrenceInstances,
+} from './businessRules';
 import {
   collection,
   onSnapshot,
@@ -41,6 +55,8 @@ const STORAGE_KEYS = {
   AUDIT: 'eventflow_audit',
   USER: 'eventflow_user',
   USERS_LIST: 'eventflow_users_list',
+  REPORT_SCHEDULES: 'eventflow_report_schedules',
+  REPORT_LOGS: 'eventflow_report_logs',
 };
 
 // Semilla inicial de espacios empresariales
@@ -1873,5 +1889,368 @@ export function addAuditLog(log: Omit<AuditLog, 'id' | 'timestamp'>): void {
   if (current.length > 200) current.length = 200;
   save(STORAGE_KEYS.AUDIT, current);
   auditListeners.forEach((fn) => fn(current));
+}
+
+// ============================================================================
+// GESTIÓN DE TAREAS ASOCIADAS A EVENTOS Y NOVEDADES (HISTORIAL INMUTABLE)
+// ============================================================================
+
+export async function saveEventTask(
+  eventId: string,
+  taskPayload: Omit<EventTask, 'id' | 'createdAt'> & { id?: string; createdAt?: string }
+): Promise<EventTask> {
+  const now = new Date().toISOString();
+  const currentEvents = load<EventEntity[]>(STORAGE_KEYS.EVENTS, initialEvents);
+  const event = currentEvents.find((e) => e.id === eventId);
+
+  if (!event) {
+    throw new Error(`Evento con ID ${eventId} no encontrado.`);
+  }
+
+  const tasks = event.tasks || [];
+  let savedTask: EventTask;
+
+  if (taskPayload.id) {
+    const existingIdx = tasks.findIndex((t) => t.id === taskPayload.id);
+    if (existingIdx >= 0) {
+      savedTask = {
+        ...tasks[existingIdx],
+        ...taskPayload,
+        id: taskPayload.id,
+        eventId,
+        createdAt: tasks[existingIdx].createdAt || now,
+        updatedAt: now,
+        updates: taskPayload.updates || tasks[existingIdx].updates || [],
+      };
+      tasks[existingIdx] = savedTask;
+    } else {
+      savedTask = {
+        ...taskPayload,
+        id: taskPayload.id,
+        eventId,
+        createdAt: taskPayload.createdAt || now,
+        updatedAt: now,
+        updates: taskPayload.updates || [],
+      };
+      tasks.push(savedTask);
+    }
+  } else {
+    const newId = `task-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    savedTask = {
+      ...taskPayload,
+      id: newId,
+      eventId,
+      createdAt: now,
+      updatedAt: now,
+      updates: taskPayload.updates || [],
+    };
+    tasks.push(savedTask);
+  }
+
+  event.tasks = tasks;
+  await saveEvent(event);
+  return savedTask;
+}
+
+export async function updateEventTaskStatus(
+  eventId: string,
+  taskId: string,
+  newStatus: EventTaskStatus,
+  noteText?: string,
+  author?: { uid: string; name: string; email?: string }
+): Promise<void> {
+  const currentEvents = load<EventEntity[]>(STORAGE_KEYS.EVENTS, initialEvents);
+  const event = currentEvents.find((e) => e.id === eventId);
+  if (!event || !event.tasks) return;
+
+  const task = event.tasks.find((t) => t.id === taskId);
+  if (!task) return;
+
+  const previousStatus = task.status;
+  task.status = newStatus;
+  task.updatedAt = new Date().toISOString();
+
+  // Registrar novedad en el historial sin sobrescribir las anteriores
+  const newUpdate: EventTaskUpdate = {
+    id: `upd-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    authorUid: author?.uid || 'user-anon',
+    authorName: author?.name || 'Usuario Asignado',
+    authorEmail: author?.email,
+    text: noteText || `Cambio de estado de "${previousStatus}" a "${newStatus}".`,
+    statusChange: newStatus,
+    createdAt: new Date().toISOString(),
+  };
+
+  task.updates = [...(task.updates || []), newUpdate];
+  await saveEvent(event);
+}
+
+export async function addEventTaskUpdate(
+  eventId: string,
+  taskId: string,
+  update: {
+    text: string;
+    authorUid: string;
+    authorName: string;
+    authorEmail?: string;
+    statusChange?: EventTaskStatus;
+  }
+): Promise<void> {
+  const currentEvents = load<EventEntity[]>(STORAGE_KEYS.EVENTS, initialEvents);
+  const event = currentEvents.find((e) => e.id === eventId);
+  if (!event || !event.tasks) return;
+
+  const task = event.tasks.find((t) => t.id === taskId);
+  if (!task) return;
+
+  const now = new Date().toISOString();
+  if (update.statusChange) {
+    task.status = update.statusChange;
+  }
+  task.updatedAt = now;
+
+  const newUpdate: EventTaskUpdate = {
+    id: `upd-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    authorUid: update.authorUid,
+    authorName: update.authorName,
+    authorEmail: update.authorEmail,
+    text: update.text,
+    statusChange: update.statusChange,
+    createdAt: now,
+  };
+
+  task.updates = [...(task.updates || []), newUpdate];
+  await saveEvent(event);
+}
+
+export async function deleteEventTask(eventId: string, taskId: string): Promise<void> {
+  const currentEvents = load<EventEntity[]>(STORAGE_KEYS.EVENTS, initialEvents);
+  const event = currentEvents.find((e) => e.id === eventId);
+  if (!event || !event.tasks) return;
+
+  event.tasks = event.tasks.filter((t) => t.id !== taskId);
+  await saveEvent(event);
+}
+
+// ============================================================================
+// SOLICITUD Y RESOLUCIÓN EXCLUSIVA DE AUTORIZACIONES EXCEPCIONALES (<27 DÍAS)
+// ============================================================================
+
+export async function requestExceptionalApproval(
+  eventId: string,
+  reason: string,
+  requester: { uid: string; name: string; email: string }
+): Promise<void> {
+  const currentEvents = load<EventEntity[]>(STORAGE_KEYS.EVENTS, initialEvents);
+  const event = currentEvents.find((e) => e.id === eventId);
+  if (!event) throw new Error('Evento no encontrado.');
+
+  const now = new Date().toISOString();
+  const exceptionalApproval: ExceptionalApproval = {
+    required: true,
+    status: 'pendiente',
+    requestedAt: now,
+    requestedBy: requester,
+    reason: reason.trim(),
+    originalSnapshot: {
+      date: event.date,
+      isVirtual: Boolean(event.isVirtual),
+    },
+  };
+
+  event.exceptionalApproval = exceptionalApproval;
+  event.status = 'pendiente_autorizacion';
+  await saveEvent(event);
+
+  // Notificar al Superadministrador Institucional
+  addNotification({
+    userId: 'ALL_ADMINS',
+    recipientEmail: 'proyectostic.med@udea.edu.co',
+    title: '⚠️ Solicitud de Autorización Excepcional Urgente',
+    message: `El usuario ${requester.name} solicita autorización excepcional para el evento presencial "${event.title}" (${event.date}).`,
+    type: 'solicitud',
+    eventId: event.id,
+  }).catch(console.warn);
+
+  sendExceptionalRequestToSuperAdmin({
+    eventTitle: event.title,
+    eventDate: event.date,
+    eventStartTime: event.startTime,
+    eventEndTime: event.endTime,
+    spaceName: event.spaceName,
+    requesterName: requester.name,
+    requesterEmail: requester.email,
+    reason,
+    daysAnticipation: 0,
+    eventId: event.id,
+  }).catch(console.warn);
+}
+
+export async function resolveExceptionalApproval(
+  eventId: string,
+  decision: 'aprobado' | 'rechazado',
+  notes: string,
+  resolver: { uid: string; name: string; email: string }
+): Promise<void> {
+  // Verificación estricta de exclusividad
+  if (!isInstitutionalSuperAdmin(resolver)) {
+    throw new Error(
+      'Acceso denegado: Únicamente la cuenta de Superadministrador Institucional (proyectostic.med@udea.edu.co) está autorizada para resolver autorizaciones excepcionales.'
+    );
+  }
+
+  const currentEvents = load<EventEntity[]>(STORAGE_KEYS.EVENTS, initialEvents);
+  const event = currentEvents.find((e) => e.id === eventId);
+  if (!event) throw new Error('Evento no encontrado.');
+
+  const now = new Date().toISOString();
+  event.exceptionalApproval = {
+    ...(event.exceptionalApproval || { required: true }),
+    status: decision,
+    resolvedAt: now,
+    resolvedBy: resolver,
+    notes: notes.trim(),
+    originalSnapshot: {
+      date: event.date,
+      isVirtual: Boolean(event.isVirtual),
+    },
+  };
+
+  if (decision === 'aprobado') {
+    event.status = 'programado';
+  } else {
+    event.status = 'cancelado';
+  }
+
+  await saveEvent(event);
+
+  // Notificar al solicitante
+  const targetEmail = event.exceptionalApproval.requestedBy?.email || event.createdBy.email;
+  const targetName = event.exceptionalApproval.requestedBy?.name || event.createdBy.name;
+
+  addNotification({
+    userId: event.exceptionalApproval.requestedBy?.uid || event.createdBy.uid,
+    recipientEmail: targetEmail,
+    title: `Resolución de Autorización Excepcional: ${decision.toUpperCase()}`,
+    message: `Tu solicitud para el evento "${event.title}" ha sido ${decision.toUpperCase()} por el Superadministrador.`,
+    type: decision === 'aprobado' ? 'confirmacion' : 'rechazo',
+    eventId: event.id,
+  }).catch(console.warn);
+
+  if (targetEmail) {
+    sendExceptionalResolutionToRequester({
+      toEmail: targetEmail,
+      toName: targetName,
+      eventTitle: event.title,
+      status: decision,
+      notes,
+    }).catch(console.warn);
+  }
+}
+
+// ============================================================================
+// PROGRAMACIÓN AUTOMÁTICA DE REPORTES (EXCLUSIVO SUPERADMINISTRADOR)
+// ============================================================================
+
+const reportScheduleListeners = new Set<Listener<AutomatedReportSchedule[]>>();
+const reportLogListeners = new Set<Listener<ReportExecutionLog[]>>();
+
+const initialReportSchedules: AutomatedReportSchedule[] = [
+  {
+    id: 'sched-1',
+    name: 'Informe Mensual Consolidado Institucional',
+    reportType: 'informe_mensual_gestion',
+    frequency: 'mensual',
+    dataPeriod: 'mes_anterior',
+    format: 'pdf',
+    recipientEmail: 'proyectostic.med@udea.edu.co',
+    active: true,
+    startDate: getBogotaToday(),
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: 'sched-2',
+    name: 'Alerta Semanal de Tareas y Compromisos Pendientes',
+    reportType: 'informe_tareas_pendientes',
+    frequency: 'semanal',
+    dataPeriod: 'semana_anterior',
+    format: 'xlsx',
+    recipientEmail: 'proyectostic.med@udea.edu.co',
+    active: true,
+    startDate: getBogotaToday(),
+    createdAt: new Date().toISOString(),
+  },
+];
+
+export function subscribeToReportSchedules(
+  callback: (schedules: AutomatedReportSchedule[]) => void
+): () => void {
+  reportScheduleListeners.add(callback);
+  const current = load<AutomatedReportSchedule[]>(
+    STORAGE_KEYS.REPORT_SCHEDULES,
+    initialReportSchedules
+  );
+  callback(current);
+  return () => reportScheduleListeners.delete(callback);
+}
+
+export async function saveReportSchedule(
+  schedule: Omit<AutomatedReportSchedule, 'id' | 'createdAt'> & { id?: string }
+): Promise<string> {
+  const now = new Date().toISOString();
+  const current = load<AutomatedReportSchedule[]>(
+    STORAGE_KEYS.REPORT_SCHEDULES,
+    initialReportSchedules
+  );
+  let id = schedule.id;
+
+  if (id) {
+    const idx = current.findIndex((s) => s.id === id);
+    if (idx >= 0) {
+      current[idx] = { ...current[idx], ...schedule, id };
+    } else {
+      current.push({ ...schedule, id, createdAt: now });
+    }
+  } else {
+    id = `sched-${Date.now()}`;
+    current.push({ ...schedule, id, createdAt: now });
+  }
+
+  save(STORAGE_KEYS.REPORT_SCHEDULES, current);
+  reportScheduleListeners.forEach((fn) => fn(current));
+  return id;
+}
+
+export async function deleteReportSchedule(scheduleId: string): Promise<void> {
+  const current = load<AutomatedReportSchedule[]>(
+    STORAGE_KEYS.REPORT_SCHEDULES,
+    initialReportSchedules
+  );
+  const filtered = current.filter((s) => s.id !== scheduleId);
+  save(STORAGE_KEYS.REPORT_SCHEDULES, filtered);
+  reportScheduleListeners.forEach((fn) => fn(filtered));
+}
+
+export function subscribeToReportLogs(
+  callback: (logs: ReportExecutionLog[]) => void
+): () => void {
+  reportLogListeners.add(callback);
+  const current = load<ReportExecutionLog[]>(STORAGE_KEYS.REPORT_LOGS, []);
+  callback(current);
+  return () => reportLogListeners.delete(callback);
+}
+
+export async function saveReportExecutionLog(
+  log: Omit<ReportExecutionLog, 'id'>
+): Promise<void> {
+  const current = load<ReportExecutionLog[]>(STORAGE_KEYS.REPORT_LOGS, []);
+  const newLog: ReportExecutionLog = {
+    ...log,
+    id: `log-${Date.now()}`,
+  };
+  current.unshift(newLog);
+  if (current.length > 100) current.length = 100;
+  save(STORAGE_KEYS.REPORT_LOGS, current);
+  reportLogListeners.forEach((fn) => fn(current));
 }
 

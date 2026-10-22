@@ -13,9 +13,34 @@ import {
   UserCheck,
   Mail,
   Bell,
+  Repeat,
+  ShieldAlert,
+  ChevronDown,
+  ChevronUp,
+  Plus,
+  Trash2,
+  CheckSquare,
 } from 'lucide-react';
-import { EventEntity, Space, Person, EventType, EventStatus, PeopleGroup } from '../../types';
+import {
+  EventEntity,
+  Space,
+  Person,
+  EventType,
+  EventStatus,
+  PeopleGroup,
+  EventTask,
+  EventTaskStage,
+  EventTaskPriority,
+  RecurrenceFrequency,
+  EventReminderConfig,
+} from '../../types';
 import { detectConflicts } from '../../services/conflictEngine';
+import {
+  evaluate27DaysRule,
+  canEditEventGeneralInfo,
+  isInstitutionalSuperAdmin,
+  generateRecurrenceInstances,
+} from '../../services/businessRules';
 import { calculateDuration, format12Hour, getBogotaToday } from '../../lib/timezone';
 import { useDismissable } from '../../hooks/useDismissable';
 import { useAuth } from '../../context/AuthContext';
@@ -64,19 +89,40 @@ export const EventModal: React.FC<EventModalProps> = ({
   const [sendParticipationEmails, setSendParticipationEmails] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleToggleGroup = (group: PeopleGroup) => {
-    const isFullySelected =
-      group.memberIds.length > 0 &&
-      group.memberIds.every((id) => selectedPeopleIds.includes(id));
+  // Regla de 27 días y Autorización Excepcional
+  const [urgencyReason, setUrgencyReason] = useState('');
+  const [showUrgencyForm, setShowUrgencyForm] = useState(false);
 
-    if (isFullySelected) {
-      // Remover a los miembros de este grupo
-      setSelectedPeopleIds((prev) => prev.filter((id) => !group.memberIds.includes(id)));
-    } else {
-      // Agregar a todos los miembros de este grupo sin duplicar
-      setSelectedPeopleIds((prev) => Array.from(new Set([...prev, ...group.memberIds])));
-    }
-  };
+  // Recurrencia
+  const [recurrenceFreq, setRecurrenceFreq] = useState<RecurrenceFrequency>('ninguna');
+  const [recurrenceCount, setRecurrenceCount] = useState<number>(4);
+  const [recurrenceEndDate, setRecurrenceEndDate] = useState<string>('');
+
+  // Recordatorios
+  const [reminderEnabled, setReminderEnabled] = useState(true);
+  const [reminderDaysBefore, setReminderDaysBefore] = useState<number>(1);
+
+  // Tareas por Etapas
+  const [tasks, setTasks] = useState<EventTask[]>([]);
+  const [openStages, setOpenStages] = useState<{ previa: boolean; durante: boolean; posterior: boolean }>({
+    previa: true,
+    durante: true,
+    posterior: true,
+  });
+
+  // Estado para nueva tarea rápida
+  const [newTaskStage, setNewTaskStage] = useState<EventTaskStage | null>(null);
+  const [newTaskName, setNewTaskName] = useState('');
+  const [newTaskDesc, setNewTaskDesc] = useState('');
+  const [newTaskPriority, setNewTaskPriority] = useState<EventTaskPriority>('media');
+  const [newTaskResponsibles, setNewTaskResponsibles] = useState<string[]>([]);
+  const [newTaskExclusive, setNewTaskExclusive] = useState(false);
+  const [newTaskDueTime, setNewTaskDueTime] = useState('');
+
+  // Permiso de edición de información general
+  const canEditGeneral = useMemo(() => {
+    return canEditEventGeneralInfo(eventToEdit, user);
+  }, [eventToEdit, user]);
 
   // Cargar datos al abrir modal
   useEffect(() => {
@@ -95,8 +141,31 @@ export const EventModal: React.FC<EventModalProps> = ({
       setIsVirtual(Boolean(eventToEdit.isVirtual));
       setNotes(eventToEdit.notes || '');
       setSendParticipationEmails(false);
+      setTasks(eventToEdit.tasks || []);
+
+      if (eventToEdit.reminder) {
+        setReminderEnabled(eventToEdit.reminder.enabled);
+        setReminderDaysBefore(eventToEdit.reminder.daysBefore || 1);
+      } else {
+        setReminderEnabled(true);
+        setReminderDaysBefore(1);
+      }
+
+      if (eventToEdit.recurrence) {
+        setRecurrenceFreq(eventToEdit.recurrence.frequency || 'ninguna');
+        setRecurrenceCount(eventToEdit.recurrence.occurrencesCount || 4);
+        setRecurrenceEndDate(eventToEdit.recurrence.endDate || '');
+      } else {
+        setRecurrenceFreq('ninguna');
+      }
+
+      if (eventToEdit.exceptionalApproval) {
+        setUrgencyReason(eventToEdit.exceptionalApproval.reason || '');
+      } else {
+        setUrgencyReason('');
+      }
     } else {
-      // Valores por defecto o preset
+      // Valores por defecto
       setTitle('');
       setDescription('');
       setType('academico');
@@ -115,13 +184,24 @@ export const EventModal: React.FC<EventModalProps> = ({
       setStatus('programado');
       setNotes('');
       setSendParticipationEmails(false);
+      setTasks([]);
+      setReminderEnabled(true);
+      setReminderDaysBefore(1);
+      setRecurrenceFreq('ninguna');
+      setUrgencyReason('');
+      setShowUrgencyForm(false);
     }
   }, [eventToEdit, initialPreset, isOpen, spaces, people]);
 
   // Duración en minutos calculada en tiempo real
   const duration = useMemo(() => calculateDuration(startTime, endTime), [startTime, endTime]);
 
-  // Evaluación REACTIVA de conflictos en tiempo real (Client-side feedback instantáneo)
+  // Evaluación de la Regla Institucional de 27 Días
+  const anticipationRule = useMemo(() => {
+    return evaluate27DaysRule(date, isVirtual, eventToEdit?.exceptionalApproval);
+  }, [date, isVirtual, eventToEdit?.exceptionalApproval]);
+
+  // Evaluación de conflictos en tiempo real (espacio, personas y tareas exclusivas)
   const conflictResult = useMemo(() => {
     if (!date || !startTime || !endTime || !spaceId) {
       return { hasBlockingConflicts: false, hasWarnings: false, conflicts: [] };
@@ -136,12 +216,13 @@ export const EventModal: React.FC<EventModalProps> = ({
       peopleIds: selectedPeopleIds,
       attendeesCount,
       isVirtual,
+      tasks,
       spaces,
       people,
       existingEvents,
     });
   }, [
-    eventToEdit,
+    eventToEdit?.id,
     date,
     startTime,
     endTime,
@@ -149,6 +230,7 @@ export const EventModal: React.FC<EventModalProps> = ({
     selectedPeopleIds,
     attendeesCount,
     isVirtual,
+    tasks,
     spaces,
     people,
     existingEvents,
@@ -161,18 +243,114 @@ export const EventModal: React.FC<EventModalProps> = ({
 
   if (!isOpen) return null;
 
+  // Toggle de grupos
+  const handleToggleGroup = (group: PeopleGroup) => {
+    const isFullySelected =
+      group.memberIds.length > 0 &&
+      group.memberIds.every((id) => selectedPeopleIds.includes(id));
+
+    if (isFullySelected) {
+      setSelectedPeopleIds((prev) => prev.filter((id) => !group.memberIds.includes(id)));
+    } else {
+      setSelectedPeopleIds((prev) => Array.from(new Set([...prev, ...group.memberIds])));
+    }
+  };
+
+  const togglePerson = (pid: string) => {
+    setSelectedPeopleIds((prev) =>
+      prev.includes(pid) ? prev.filter((id) => id !== pid) : [...prev, pid]
+    );
+  };
+
+  // Agregar Tarea
+  const handleAddTask = (stage: EventTaskStage) => {
+    if (!newTaskName.trim()) {
+      alert('Por favor indica el nombre de la tarea.');
+      return;
+    }
+
+    const newTask: EventTask = {
+      id: `task-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      eventId: eventToEdit?.id || 'pending',
+      name: newTaskName.trim(),
+      description: newTaskDesc.trim() || undefined,
+      stage,
+      status: 'pendiente',
+      priority: newTaskPriority,
+      responsibleIds: newTaskResponsibles.length > 0 ? newTaskResponsibles : (responsibleId ? [responsibleId] : []),
+      dueDate: date,
+      dueTime: newTaskDueTime || undefined,
+      exclusiveAttention: newTaskExclusive,
+      updates: [
+        {
+          id: `upd-${Date.now()}`,
+          authorUid: user?.uid || 'user-creator',
+          authorName: user?.displayName || 'Creador de la Tarea',
+          text: 'Tarea creada e incorporada a la agenda del evento.',
+          createdAt: new Date().toISOString(),
+        },
+      ],
+      createdAt: new Date().toISOString(),
+    };
+
+    setTasks((prev) => [...prev, newTask]);
+    setNewTaskName('');
+    setNewTaskDesc('');
+    setNewTaskPriority('media');
+    setNewTaskResponsibles([]);
+    setNewTaskExclusive(false);
+    setNewTaskDueTime('');
+    setNewTaskStage(null);
+  };
+
+  const handleRemoveTask = (taskId: string) => {
+    setTasks((prev) => prev.filter((t) => t.id !== taskId));
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim()) return alert('Por favor ingresa un título para el evento.');
-    if (!spaceId) return alert('Por favor selecciona un espacio físico.');
+    if (!spaceId) return alert('Por favor selecciona un espacio.');
     if (duration <= 0) return alert('La hora final debe ser posterior a la hora inicial.');
 
-    // Bloqueo estricto si hay conflicto de espacio
+    // Conflicto de espacio presencial
     if (conflictResult.hasBlockingConflicts) {
       alert(
-        'No es posible guardar el evento debido a un conflicto de bloqueo (el espacio seleccionado está ocupado en ese horario).'
+        'No es posible guardar el evento debido a un conflicto de bloqueo: el espacio presencial seleccionado ya está ocupado en ese horario.'
       );
       return;
+    }
+
+    // Regla de 27 días: si es presencial y tiene menos de 27 días sin aprobación
+    let finalStatus: EventStatus = status;
+    let exceptionalData = eventToEdit?.exceptionalApproval;
+
+    if (anticipationRule.isRestricted) {
+      if (!urgencyReason.trim()) {
+        alert(
+          '⚠️ Restricción de 27 Días:\n\nEste evento presencial está programado con menos de 27 días de anticipación. Para poder radicarlo, es obligatorio ingresar la justificación de urgencia para la solicitud de autorización excepcional.'
+        );
+        setShowUrgencyForm(true);
+        return;
+      }
+
+      finalStatus = 'pendiente_autorizacion';
+      exceptionalData = {
+        required: true,
+        status: 'pendiente',
+        requestedAt: new Date().toISOString(),
+        requestedBy: {
+          uid: user?.uid || 'user-requester',
+          name: user?.displayName || 'Solicitante UdeA',
+          email: user?.email || 'proyectostic.med@udea.edu.co',
+        },
+        reason: urgencyReason.trim(),
+        daysAnticipation: anticipationRule.daysAnticipation,
+        originalSnapshot: {
+          date,
+          isVirtual,
+        },
+      };
     }
 
     setIsSubmitting(true);
@@ -180,7 +358,18 @@ export const EventModal: React.FC<EventModalProps> = ({
       const targetSpace = spaces.find((s) => s.id === spaceId);
       const targetResp = people.find((p) => p.id === responsibleId);
 
-      const eventPayload = {
+      // Configuración de recordatorios
+      const reminderConfig: EventReminderConfig | undefined = reminderEnabled
+        ? {
+            enabled: true,
+            daysBefore: reminderDaysBefore,
+            status: 'programado',
+            scheduledDate: date,
+          }
+        : undefined;
+
+      // Base payload
+      const eventPayload: Omit<EventEntity, 'id'> & { id?: string } = {
         title: title.trim(),
         description: description.trim(),
         type,
@@ -188,7 +377,7 @@ export const EventModal: React.FC<EventModalProps> = ({
         startTime,
         endTime,
         durationMinutes: duration,
-        status,
+        status: finalStatus,
         spaceId,
         spaceName: targetSpace?.name || 'Espacio Sin Asignar',
         responsibleId,
@@ -197,6 +386,17 @@ export const EventModal: React.FC<EventModalProps> = ({
         isVirtual: Boolean(isVirtual),
         notes: notes.trim(),
         peopleIds: selectedPeopleIds,
+        tasks,
+        reminder: reminderConfig,
+        exceptionalApproval: exceptionalData,
+        recurrence:
+          recurrenceFreq !== 'ninguna'
+            ? {
+                frequency: recurrenceFreq,
+                occurrencesCount: recurrenceCount,
+                endDate: recurrenceEndDate || undefined,
+              }
+            : undefined,
         createdBy: eventToEdit?.createdBy || {
           uid: user?.uid || 'person-proyectostic',
           name: user?.displayName || 'Alejandro Proyectos TIC',
@@ -205,11 +405,30 @@ export const EventModal: React.FC<EventModalProps> = ({
         createdAt: eventToEdit?.createdAt || new Date().toISOString(),
       };
 
-      await onSave(
-        eventToEdit ? { ...eventPayload, id: eventToEdit.id } : eventPayload,
-        selectedPeopleIds,
-        sendParticipationEmails
-      );
+      if (eventToEdit) {
+        eventPayload.id = eventToEdit.id;
+        await onSave(eventPayload, selectedPeopleIds, sendParticipationEmails);
+      } else {
+        // Generar serie recurrente si aplica
+        if (recurrenceFreq !== 'ninguna') {
+          const dummyBase: EventEntity = {
+            ...(eventPayload as any),
+            id: `evt-${Date.now()}`,
+          };
+          const series = generateRecurrenceInstances(dummyBase, {
+            frequency: recurrenceFreq,
+            occurrencesCount: recurrenceCount,
+            endDate: recurrenceEndDate || undefined,
+          });
+
+          for (const instance of series) {
+            await onSave(instance, selectedPeopleIds, sendParticipationEmails);
+          }
+        } else {
+          await onSave(eventPayload, selectedPeopleIds, sendParticipationEmails);
+        }
+      }
+
       onClose();
     } catch (err: any) {
       console.error(err);
@@ -217,12 +436,6 @@ export const EventModal: React.FC<EventModalProps> = ({
     } finally {
       setIsSubmitting(false);
     }
-  };
-
-  const togglePerson = (pid: string) => {
-    setSelectedPeopleIds((prev) =>
-      prev.includes(pid) ? prev.filter((id) => id !== pid) : [...prev, pid]
-    );
   };
 
   return (
@@ -236,20 +449,27 @@ export const EventModal: React.FC<EventModalProps> = ({
         aria-modal="true"
         aria-labelledby="modal-event-title"
         onClick={(e) => e.stopPropagation()}
-        className="relative w-full max-w-2xl max-h-[90vh] flex flex-col rounded-3xl border border-slate-200 bg-white shadow-2xl overflow-hidden cursor-default"
+        className="relative w-full max-w-3xl max-h-[92vh] flex flex-col rounded-3xl border border-slate-200 bg-white shadow-2xl overflow-hidden cursor-default"
       >
         {/* Header Modal */}
-        <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4 bg-slate-50/50">
+        <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4 bg-slate-50/70">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-600 text-white shadow-xs">
               <Calendar className="w-5 h-5" />
             </div>
             <div>
-              <h2 id="modal-event-title" className="text-base font-bold text-slate-900">
-                {eventToEdit ? 'Editar Evento Proyectado' : 'Programar Nuevo Evento'}
+              <h2 id="modal-event-title" className="text-base font-bold text-slate-900 flex items-center gap-2">
+                {eventToEdit ? 'Editar Evento' : 'Programar Nuevo Evento'}
+                {recurrenceFreq !== 'ninguna' && (
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 flex items-center gap-1">
+                    <Repeat className="w-3 h-3" /> Recurrente
+                  </span>
+                )}
               </h2>
               <p className="text-xs text-slate-500">
-                {eventToEdit ? 'Modifica los parámetros y verifica conflictos' : 'Completa la información para reservar recursos'}
+                {eventToEdit
+                  ? 'Gestiona la agenda, tareas asociadas y parámetros'
+                  : 'Completa la información institucional y asigna responsabilidades'}
               </p>
             </div>
           </div>
@@ -263,7 +483,57 @@ export const EventModal: React.FC<EventModalProps> = ({
 
         {/* Formulario con Scroll */}
         <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-5">
-          {/* Alertas de Conflicto en Vivo */}
+          {/* Advertencia si el usuario no es creador ni superadmin */}
+          {!canEditGeneral && (
+            <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-200 flex items-start gap-3 text-xs text-amber-900">
+              <Info className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+              <div>
+                <span className="font-bold">Modo Colaborador de Responsabilidades</span>
+                <p className="mt-0.5 text-amber-800 leading-relaxed">
+                  Únicamente el usuario creador original (<strong>{eventToEdit?.createdBy?.name || 'Administrador'}</strong>) puede modificar la información general del evento. Puedes añadir y gestionar tus tareas asociadas en las secciones inferiores.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* ALERTA DE REGLA DE 27 DÍAS PARA EVENTOS PRESENCIALES */}
+          {anticipationRule.isRestricted && (
+            <div className="p-4 rounded-2xl bg-rose-50 border-2 border-rose-300 flex flex-col gap-2.5">
+              <div className="flex items-start gap-3">
+                <ShieldAlert className="w-6 h-6 text-rose-600 shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="font-extrabold uppercase text-[10px] px-2 py-0.5 rounded bg-rose-600 text-white">
+                      Restricción 27 Días
+                    </span>
+                    <span className="text-xs font-bold text-rose-900">
+                      Evento Presencial Requiere Autorización Excepcional
+                    </span>
+                  </div>
+                  <p className="text-xs text-rose-800 mt-1 leading-relaxed">
+                    {anticipationRule.message} El evento no podrá quedar programado definitivamente en el calendario institucional hasta que el Superadministrador apruebe la excepción.
+                  </p>
+                </div>
+              </div>
+
+              {/* Justificación obligatoria */}
+              <div className="mt-1 pt-2 border-t border-rose-200">
+                <label className="block text-[11px] font-bold text-rose-900 mb-1">
+                  Justificación obligatoria de la urgencia: *
+                </label>
+                <textarea
+                  required
+                  rows={2}
+                  placeholder="Explica la urgencia y el motivo por el cual no fue posible radicar con 27 días de antelación..."
+                  value={urgencyReason}
+                  onChange={(e) => setUrgencyReason(e.target.value)}
+                  className="w-full rounded-xl border border-rose-300 bg-white px-3 py-1.5 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-rose-500"
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Alertas de Conflictos en Vivo */}
           {conflictResult.conflicts.length > 0 && (
             <div className="space-y-2">
               {conflictResult.conflicts.map((c) => (
@@ -303,18 +573,20 @@ export const EventModal: React.FC<EventModalProps> = ({
               <input
                 type="text"
                 required
-                placeholder="ej: Grabación Videoclase Magistral"
+                disabled={!canEditGeneral}
+                placeholder="ej: Videoclase o Simposio Médico"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                className="w-full rounded-xl border border-slate-200 px-3.5 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                className="w-full rounded-xl border border-slate-200 px-3.5 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 disabled:bg-slate-100 disabled:text-slate-500"
               />
             </div>
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1">Tipo</label>
               <select
                 value={type}
+                disabled={!canEditGeneral}
                 onChange={(e) => setType(e.target.value as EventType)}
-                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 capitalize"
+                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 capitalize disabled:bg-slate-100"
               >
                 <option value="academico">Académico</option>
                 <option value="simposio">Simposio</option>
@@ -341,9 +613,10 @@ export const EventModal: React.FC<EventModalProps> = ({
               <input
                 type="date"
                 required
+                disabled={!canEditGeneral}
                 value={date}
                 onChange={(e) => setDate(e.target.value)}
-                className="w-full rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-800 font-mono focus:border-indigo-500 focus:outline-none"
+                className="w-full rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-800 font-mono focus:border-indigo-500 focus:outline-none disabled:bg-slate-100"
               />
             </div>
             <div>
@@ -351,9 +624,10 @@ export const EventModal: React.FC<EventModalProps> = ({
               <input
                 type="time"
                 required
+                disabled={!canEditGeneral}
                 value={startTime}
                 onChange={(e) => setStartTime(e.target.value)}
-                className="w-full rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-800 font-mono focus:border-indigo-500 focus:outline-none"
+                className="w-full rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-800 font-mono focus:border-indigo-500 focus:outline-none disabled:bg-slate-100"
               />
             </div>
             <div>
@@ -361,168 +635,439 @@ export const EventModal: React.FC<EventModalProps> = ({
               <input
                 type="time"
                 required
+                disabled={!canEditGeneral}
                 value={endTime}
                 onChange={(e) => setEndTime(e.target.value)}
-                className="w-full rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-800 font-mono focus:border-indigo-500 focus:outline-none"
+                className="w-full rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-800 font-mono focus:border-indigo-500 focus:outline-none disabled:bg-slate-100"
               />
             </div>
-            <div className="flex flex-col justify-end">
-              <span className="text-[10px] font-bold uppercase text-slate-400">Duración</span>
-              <span className="text-xs font-mono font-bold text-indigo-700 bg-white p-1.5 rounded-xl border border-indigo-100 text-center">
-                {duration} minutos
-              </span>
+            <div>
+              <label className="block text-[11px] font-bold text-slate-600 mb-1">Duración</label>
+              <div className="flex h-[34px] items-center rounded-xl bg-slate-200/60 px-3 text-xs font-semibold text-slate-700">
+                <Clock className="w-3.5 h-3.5 mr-1.5 text-slate-500" />
+                {duration > 0 ? `${duration} min` : 'Error hora'}
+              </div>
             </div>
           </div>
 
-          {/* Espacio Físico y Capacidad */}
+          {/* Espacio y Modalidad */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="sm:col-span-2">
               <label className="block text-xs font-bold text-slate-700 mb-1">
-                Espacio Requerido *
+                Espacio Físico o Virtual *
               </label>
               <select
                 value={spaceId}
+                disabled={!canEditGeneral}
                 onChange={(e) => {
-                  const newSpaceId = e.target.value;
-                  setSpaceId(newSpaceId);
-                  const target = spaces.find((s) => s.id === newSpaceId);
-                  if (target?.isVirtual || (target?.name || '').toLowerCase().includes('virtual')) {
-                    setIsVirtual(true);
-                  }
+                  const spId = e.target.value;
+                  setSpaceId(spId);
+                  const sp = spaces.find((s) => s.id === spId);
+                  setIsVirtual(Boolean(sp?.isVirtual || (sp?.name || '').toLowerCase().includes('virtual')));
                 }}
-                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 disabled:bg-slate-100"
               >
-                <option value="">Selecciona un espacio...</option>
                 {spaces.map((s) => (
                   <option key={s.id} value={s.id}>
-                    {s.name} {s.isVirtual ? '(Plataforma Virtual)' : `(Capacidad: ${s.capacity} personas)`}
+                    {s.name} ({s.location} - Cap: {s.capacity}) {s.isVirtual ? '• Virtual' : ''}
                   </option>
                 ))}
               </select>
             </div>
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">Asistentes Proy.</label>
-              <input
-                type="number"
-                min="1"
-                value={attendeesCount}
-                onChange={(e) => setAttendeesCount(Number(e.target.value))}
-                className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-800 focus:border-indigo-500 focus:outline-none"
-              />
-            </div>
 
-            {/* Modalidad: Virtual vs Presencial */}
-            <div className="sm:col-span-3 p-3 rounded-xl bg-slate-50 border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  id="isVirtualCheckbox"
-                  checked={isVirtual}
-                  onChange={(e) => setIsVirtual(e.target.checked)}
-                  className="rounded border-slate-300 text-cyan-600 focus:ring-cyan-500 h-4 w-4"
-                />
-                <label htmlFor="isVirtualCheckbox" className="text-xs font-bold text-slate-800 cursor-pointer">
-                  Modalidad Virtual / En Línea (Teams, Meet, Zoom)
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">Modalidad</label>
+              <div className="flex items-center gap-2 mt-2">
+                <label className="flex items-center gap-1.5 text-xs font-medium text-slate-700 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    disabled={!canEditGeneral}
+                    checked={isVirtual}
+                    onChange={(e) => setIsVirtual(e.target.checked)}
+                    className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                  />
+                  <span>Modalidad Virtual</span>
                 </label>
               </div>
-              <span
-                className={`text-[11px] font-semibold px-2.5 py-0.5 rounded-full ${
-                  isVirtual
-                    ? 'bg-cyan-100 text-cyan-800 border border-cyan-200'
-                    : 'bg-emerald-100 text-emerald-800 border border-emerald-200'
-                }`}
-              >
-                {isVirtual
-                  ? '✓ Permite eventos simultáneos a la misma hora'
-                  : '🔒 Requiere presencialidad exclusiva (Bloquea cruces)'}
-              </span>
             </div>
           </div>
 
-          {/* Responsable Principal y Estado */}
+          {/* Responsable Principal y Asistentes Proyectados */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1">
-                Responsable del Evento
+                Responsable Principal del Evento
               </label>
               <select
                 value={responsibleId}
+                disabled={!canEditGeneral}
                 onChange={(e) => setResponsibleId(e.target.value)}
-                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 focus:border-indigo-500 focus:outline-none"
+                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 focus:border-indigo-500 focus:outline-none disabled:bg-slate-100"
               >
-                <option value="">Selecciona una persona responsable...</option>
                 {people.map((p) => (
                   <option key={p.id} value={p.id}>
-                    {p.firstName} {p.lastName} — {p.roleTitle}
+                    {p.firstName} {p.lastName} — {p.roleTitle || p.department}
                   </option>
                 ))}
               </select>
             </div>
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">Estado</label>
-              <select
-                value={status}
-                onChange={(e) => setStatus(e.target.value as EventStatus)}
-                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 focus:border-indigo-500 focus:outline-none capitalize"
-              >
-                <option value="programado">Programado</option>
-                <option value="confirmado">Confirmado</option>
-                <option value="pendiente_confirmacion">Pendiente de Confirmación</option>
-                <option value="borrador">Borrador</option>
-                <option value="en_ejecucion">En Ejecución</option>
-                <option value="finalizado">Finalizado</option>
-                <option value="cancelado">Cancelado</option>
-              </select>
+              <label className="block text-xs font-bold text-slate-700 mb-1">
+                Aforo / Asistentes Proyectados
+              </label>
+              <input
+                type="number"
+                min="1"
+                disabled={!canEditGeneral}
+                value={attendeesCount}
+                onChange={(e) => setAttendeesCount(Number(e.target.value))}
+                className="w-full rounded-xl border border-slate-200 px-3.5 py-2 text-sm text-slate-800 focus:border-indigo-500 focus:outline-none disabled:bg-slate-100"
+              />
             </div>
           </div>
 
-          {/* Personas Involucradas / Convocatoria */}
+          {/* SECCIÓN DE RECURRENCIA (SECCIÓN 6) */}
+          <div className="p-4 rounded-2xl border border-slate-200 bg-slate-50/50 space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-800 flex items-center gap-2">
+                <Repeat className="w-4 h-4 text-indigo-600" />
+                Programación Periódica / Recurrencia
+              </span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-600 mb-1">Frecuencia</label>
+                <select
+                  value={recurrenceFreq}
+                  disabled={!canEditGeneral || Boolean(eventToEdit)}
+                  onChange={(e) => setRecurrenceFreq(e.target.value as RecurrenceFrequency)}
+                  className="w-full rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-800 focus:border-indigo-500 disabled:bg-slate-100"
+                >
+                  <option value="ninguna">Evento Único (Sin repetición)</option>
+                  <option value="diaria">Diariamente</option>
+                  <option value="semanal">Semanalmente</option>
+                  <option value="mensual">Mensualmente</option>
+                  <option value="personalizada">Personalizada</option>
+                </select>
+              </div>
+              {recurrenceFreq !== 'ninguna' && (
+                <>
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-600 mb-1">Repeticiones (Ocurrencias)</label>
+                    <input
+                      type="number"
+                      min="2"
+                      max="52"
+                      value={recurrenceCount}
+                      onChange={(e) => setRecurrenceCount(Number(e.target.value))}
+                      className="w-full rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-800"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-600 mb-1">Hasta Fecha (Opcional)</label>
+                    <input
+                      type="date"
+                      value={recurrenceEndDate}
+                      onChange={(e) => setRecurrenceEndDate(e.target.value)}
+                      className="w-full rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-800"
+                    />
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* SECCIÓN DE RECORDATORIOS AUTOMÁTICOS (SECCIÓN 2) */}
+          <div className="p-4 rounded-2xl border border-slate-200 bg-slate-50/50 space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-800 flex items-center gap-2">
+                <Bell className="w-4 h-4 text-emerald-600" />
+                Recordatorios Automáticos por Correo Electrónico
+              </span>
+              <label className="flex items-center gap-1.5 text-xs font-medium text-slate-700 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={reminderEnabled}
+                  onChange={(e) => setReminderEnabled(e.target.checked)}
+                  className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                />
+                <span>Habilitar Recordatorio</span>
+              </label>
+            </div>
+            {reminderEnabled && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                    Anticipación del Recordatorio
+                  </label>
+                  <select
+                    value={reminderDaysBefore}
+                    onChange={(e) => setReminderDaysBefore(Number(e.target.value))}
+                    className="w-full rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-800 focus:border-emerald-500"
+                  >
+                    <option value={1}>1 día antes (Mínimo recomendado)</option>
+                    <option value={2}>2 días antes</option>
+                    <option value={3}>3 días antes</option>
+                    <option value={7}>1 semana antes (7 días)</option>
+                    <option value={15}>15 días antes</option>
+                  </select>
+                </div>
+                <div className="flex items-center text-xs text-slate-500 pt-4">
+                  El correo incluirá las responsabilidades específicas de cada persona y enlace directo al planeador.
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* ORGANIZACIÓN DE TAREAS POR ETAPAS (SECCIÓN 3 Y 4) */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-xs font-bold text-slate-900 flex items-center gap-2">
+                  <CheckSquare className="w-4 h-4 text-indigo-600" />
+                  Gestión y Distribución de Tareas por Etapas ({tasks.length} tareas)
+                </h3>
+                <p className="text-[11px] text-slate-500">
+                  Una persona puede tener múltiples tareas compatibles en diferentes etapas sin generar conflicto.
+                </p>
+              </div>
+            </div>
+
+            {/* ACORDEONES DE LAS 3 ETAPAS */}
+            {(['previa', 'durante', 'posterior'] as EventTaskStage[]).map((stage) => {
+              const stageLabels = {
+                previa: { title: '1. Tareas Previas al Evento', desc: 'Preparación, insumos, logística y coordinación' },
+                durante: { title: '2. Tareas Durante el Evento', desc: 'Acompañamiento, moderación, soporte audiovisual y registro' },
+                posterior: { title: '3. Tareas Posteriores al Evento', desc: 'Actas, memorias, certificados, evaluación y cierre' },
+              };
+              const stageTasks = tasks.filter((t) => t.stage === stage);
+              const isOpen = openStages[stage];
+
+              return (
+                <div key={stage} className="rounded-2xl border border-slate-200 bg-white overflow-hidden shadow-2xs">
+                  <button
+                    type="button"
+                    onClick={() => setOpenStages((prev) => ({ ...prev, [stage]: !prev[stage] }))}
+                    className="w-full flex items-center justify-between p-3.5 bg-slate-50 hover:bg-slate-100/70 transition-colors text-left"
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-xs text-slate-900">{stageLabels[stage].title}</span>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-200 text-slate-700">
+                        {stageTasks.length}
+                      </span>
+                    </div>
+                    {isOpen ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
+                  </button>
+
+                  {isOpen && (
+                    <div className="p-3.5 space-y-3">
+                      {stageTasks.length === 0 && newTaskStage !== stage && (
+                        <p className="text-xs text-slate-400 italic">No hay tareas registradas para esta etapa.</p>
+                      )}
+
+                      {/* Lista de tareas registradas en esta etapa */}
+                      {stageTasks.map((task) => (
+                        <div
+                          key={task.id}
+                          className="flex items-start justify-between gap-3 p-2.5 rounded-xl border border-slate-200 bg-slate-50/50 text-xs"
+                        >
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-slate-800">{task.name}</span>
+                              <span
+                                className={`text-[10px] font-bold px-1.5 py-0.2 rounded ${
+                                  task.priority === 'alta'
+                                    ? 'bg-rose-100 text-rose-700'
+                                    : task.priority === 'media'
+                                    ? 'bg-amber-100 text-amber-700'
+                                    : 'bg-slate-100 text-slate-600'
+                                }`}
+                              >
+                                {task.priority}
+                              </span>
+                              {task.exclusiveAttention && (
+                                <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-purple-100 text-purple-700">
+                                  Atención Exclusiva
+                                </span>
+                              )}
+                            </div>
+                            {task.description && (
+                              <p className="text-[11px] text-slate-500 mt-0.5">{task.description}</p>
+                            )}
+                            <div className="flex items-center gap-3 text-[10px] text-slate-400 mt-1">
+                              <span>Responsables: {task.responsibleIds.map((id) => {
+                                const p = people.find((x) => x.id === id);
+                                return p ? `${p.firstName} ${p.lastName}` : id;
+                              }).join(', ') || 'Sin asignar'}</span>
+                              {task.dueTime && <span>Hora: {task.dueTime}</span>}
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveTask(task.id)}
+                            className="text-slate-400 hover:text-rose-600 transition-colors p-1"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      ))}
+
+                      {/* Formulario Inline para Nueva Tarea */}
+                      {newTaskStage === stage ? (
+                        <div className="p-3 rounded-xl border border-indigo-200 bg-indigo-50/40 space-y-2">
+                          <input
+                            type="text"
+                            placeholder="Nombre de la tarea (ej: Revisión de micrófonos y proyector)"
+                            value={newTaskName}
+                            onChange={(e) => setNewTaskName(e.target.value)}
+                            className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-indigo-500"
+                          />
+                          <input
+                            type="text"
+                            placeholder="Descripción u observaciones opcionales"
+                            value={newTaskDesc}
+                            onChange={(e) => setNewTaskDesc(e.target.value)}
+                            className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none"
+                          />
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                            <div>
+                              <label className="block text-[10px] font-semibold text-slate-600 mb-0.5">Prioridad</label>
+                              <select
+                                value={newTaskPriority}
+                                onChange={(e) => setNewTaskPriority(e.target.value as EventTaskPriority)}
+                                className="w-full rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs"
+                              >
+                                <option value="baja">Baja</option>
+                                <option value="media">Media</option>
+                                <option value="alta">Alta</option>
+                              </select>
+                            </div>
+                            <div>
+                              <label className="block text-[10px] font-semibold text-slate-600 mb-0.5">Hora Límite</label>
+                              <input
+                                type="time"
+                                value={newTaskDueTime}
+                                onChange={(e) => setNewTaskDueTime(e.target.value)}
+                                className="w-full rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-mono"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-[10px] font-semibold text-slate-600 mb-0.5">Responsables</label>
+                              <select
+                                onChange={(e) => {
+                                  const pid = e.target.value;
+                                  if (pid && !newTaskResponsibles.includes(pid)) {
+                                    setNewTaskResponsibles((prev) => [...prev, pid]);
+                                  }
+                                }}
+                                className="w-full rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs"
+                              >
+                                <option value="">+ Asignar persona</option>
+                                {people.map((p) => (
+                                  <option key={p.id} value={p.id}>
+                                    {p.firstName} {p.lastName}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          </div>
+
+                          {/* Chips de personas asignadas */}
+                          {newTaskResponsibles.length > 0 && (
+                            <div className="flex flex-wrap gap-1">
+                              {newTaskResponsibles.map((pid) => {
+                                const p = people.find((x) => x.id === pid);
+                                return (
+                                  <span key={pid} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-white border border-indigo-200 text-[10px] text-indigo-700 font-semibold">
+                                    {p ? `${p.firstName} ${p.lastName}` : pid}
+                                    <button type="button" onClick={() => setNewTaskResponsibles((prev) => prev.filter((id) => id !== pid))}>
+                                      <X className="w-3 h-3" />
+                                    </button>
+                                  </span>
+                                );
+                              })}
+                            </div>
+                          )}
+
+                          {/* Toggle de Atención Exclusiva */}
+                          <div className="pt-1">
+                            <label className="flex items-center gap-2 text-xs font-medium text-purple-900 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={newTaskExclusive}
+                                onChange={(e) => setNewTaskExclusive(e.target.checked)}
+                                className="rounded border-purple-300 text-purple-600 focus:ring-purple-500"
+                              />
+                              <span>⚠️ Requiere atención exclusiva (alerta de cruce simultáneo en el mismo horario)</span>
+                            </label>
+                          </div>
+
+                          <div className="flex items-center justify-end gap-2 pt-2">
+                            <button
+                              type="button"
+                              onClick={() => setNewTaskStage(null)}
+                              className="px-2.5 py-1 text-xs text-slate-500 hover:text-slate-800"
+                            >
+                              Cancelar
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleAddTask(stage)}
+                              className="px-3 py-1 rounded-lg bg-indigo-600 text-white text-xs font-bold hover:bg-indigo-700"
+                            >
+                              Guardar Tarea
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setNewTaskStage(stage)}
+                          className="flex items-center gap-1.5 text-xs text-indigo-600 font-bold hover:text-indigo-800 transition-colors"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>Agregar Tarea a esta Etapa</span>
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Personas y Grupos Convocados */}
           <div>
             <div className="flex items-center justify-between mb-2">
               <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
                 <Users className="w-4 h-4 text-indigo-600" />
-                Personas Convocadas ({selectedPeopleIds.length} seleccionadas)
+                Personas y Grupos Convocados ({selectedPeopleIds.length} seleccionados)
               </label>
-              <span className="text-[11px] text-slate-400">
-                Se validará simultaneidad en tiempo real
-              </span>
             </div>
-            {/* Convocatoria por Grupos */}
+
+            {/* Selector Rápido de Grupos */}
             {groups.length > 0 && (
-              <div className="mb-2.5 p-2 rounded-xl bg-slate-100/70 border border-slate-200/80">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block mb-1.5">
-                  Convocatoria Rápida por Grupos:
+              <div className="mb-2.5 p-2.5 rounded-xl bg-slate-50 border border-slate-200">
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide block mb-1.5">
+                  Seleccionar por Grupo Institucional:
                 </span>
                 <div className="flex flex-wrap gap-1.5">
-                  {groups.map((g) => {
+                  {groups.map((group) => {
                     const isFullySelected =
-                      g.memberIds.length > 0 &&
-                      g.memberIds.every((id) => selectedPeopleIds.includes(id));
+                      group.memberIds.length > 0 &&
+                      group.memberIds.every((id) => selectedPeopleIds.includes(id));
                     return (
                       <button
-                        key={g.id}
+                        key={group.id}
                         type="button"
-                        onClick={() => handleToggleGroup(g)}
-                        className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold border transition-all ${
+                        onClick={() => handleToggleGroup(group)}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-semibold border transition-all ${
                           isFullySelected
-                            ? 'bg-emerald-50 border-emerald-300 text-emerald-800 shadow-xs'
-                            : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                            ? 'bg-indigo-600 text-white border-indigo-600 shadow-2xs'
+                            : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
                         }`}
-                        title={
-                          isFullySelected
-                            ? 'Desmarcar integrantes de este grupo'
-                            : 'Convocar a todos los integrantes de este grupo'
-                        }
                       >
-                        <span
-                          className="w-2 h-2 rounded-full shrink-0"
-                          style={{ backgroundColor: g.color || '#059669' }}
-                        />
-                        <span>{g.name}</span>
-                        <span className="text-[10px] text-slate-400">({g.memberIds.length})</span>
-                        {isFullySelected && (
-                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 ml-0.5 shrink-0" />
-                        )}
+                        {group.name} ({group.memberIds.length})
                       </button>
                     );
                   })}
@@ -530,102 +1075,27 @@ export const EventModal: React.FC<EventModalProps> = ({
               </div>
             )}
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-40 overflow-y-auto p-2 rounded-2xl border border-slate-200 bg-slate-50/50">
+            {/* Lista Scrollable de Personas */}
+            <div className="max-h-36 overflow-y-auto rounded-xl border border-slate-200 divide-y divide-slate-100">
               {people.map((p) => {
                 const isSelected = selectedPeopleIds.includes(p.id);
                 return (
                   <div
                     key={p.id}
                     onClick={() => togglePerson(p.id)}
-                    className={`flex items-center justify-between p-2 rounded-xl border text-xs cursor-pointer transition-all ${
-                      isSelected
-                        ? 'border-indigo-500 bg-indigo-50 text-indigo-900 font-semibold'
-                        : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-100'
+                    className={`flex items-center justify-between p-2.5 cursor-pointer text-xs transition-colors ${
+                      isSelected ? 'bg-indigo-50/60 font-semibold' : 'hover:bg-slate-50'
                     }`}
                   >
-                    <div className="truncate pr-2">
-                      <p className="truncate">
-                        {p.firstName} {p.lastName}
-                      </p>
-                      <p className="text-[10px] text-slate-400 truncate">{p.roleTitle}</p>
+                    <div>
+                      <span className="text-slate-800">{p.firstName} {p.lastName}</span>
+                      <p className="text-[10px] text-slate-400 truncate">{p.roleTitle || p.department}</p>
                     </div>
                     {isSelected && <CheckCircle2 className="w-4 h-4 text-indigo-600 shrink-0" />}
                   </div>
                 );
               })}
             </div>
-
-            {/* Control de Desactivar / Activar Envio Automatico de Correo vs Notificacion en Panel */}
-            <div className="mt-3 rounded-2xl border p-3.5 transition-all bg-slate-50/80 border-slate-200">
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2.5">
-                  <div className={`flex h-9 w-9 items-center justify-center rounded-xl transition-colors ${
-                    sendParticipationEmails ? 'bg-indigo-600 text-white' : 'bg-slate-200 text-slate-600'
-                  }`}>
-                    <Mail className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-bold text-slate-800">
-                        Envío de correo institucional (Brevo)
-                      </span>
-                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold border transition-colors ${
-                        sendParticipationEmails
-                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                          : 'bg-slate-100 text-slate-600 border-slate-200'
-                      }`}>
-                        {sendParticipationEmails ? 'Activado' : 'Desactivado'}
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-slate-500 mt-0.5 leading-snug">
-                      {sendParticipationEmails
-                        ? 'Se enviará un correo automático a cada convocado con el enlace de confirmación directa.'
-                        : 'No se enviarán correos automáticos. Los convocados recibirán la notificación en su panel de usuario al iniciar sesión.'}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Botón Switch / Toggle */}
-                <button
-                  type="button"
-                  onClick={() => setSendParticipationEmails(!sendParticipationEmails)}
-                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 ${
-                    sendParticipationEmails ? 'bg-indigo-600' : 'bg-slate-300'
-                  }`}
-                  role="switch"
-                  aria-checked={sendParticipationEmails}
-                  title={sendParticipationEmails ? 'Clic para desactivar envío de correo' : 'Clic para activar envío de correo'}
-                >
-                  <span
-                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
-                      sendParticipationEmails ? 'translate-x-5' : 'translate-x-0'
-                    }`}
-                  />
-                </button>
-              </div>
-
-              {/* Nota confirmando que la notificación en plataforma siempre llega */}
-              <div className="mt-2.5 pt-2 border-t border-slate-200/60 flex items-center gap-1.5 text-[11px] text-indigo-700 font-medium">
-                <Bell className="w-3.5 h-3.5 shrink-0 text-indigo-600" />
-                <span>
-                  La notificación interna en plataforma <strong>siempre llegará</strong> al panel de los participantes asignados al iniciar sesión.
-                </span>
-              </div>
-            </div>
-          </div>
-
-          {/* Descripción y Observaciones */}
-          <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1">
-              Descripción u Observaciones
-            </label>
-            <textarea
-              rows={2}
-              placeholder="Detalles sobre equipamiento especial, requerimientos técnicos o agenda..."
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              className="w-full rounded-xl border border-slate-200 px-3.5 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
-            />
           </div>
 
           {/* Footer de Acciones */}
@@ -648,6 +1118,8 @@ export const EventModal: React.FC<EventModalProps> = ({
             >
               {isSubmitting
                 ? 'Guardando...'
+                : anticipationRule.isRestricted
+                ? 'Radicar con Solicitud Excepcional'
                 : eventToEdit
                 ? 'Actualizar Evento'
                 : 'Guardar y Programar'}

@@ -14,9 +14,11 @@ import {
   X,
   CheckSquare,
   Activity,
+  BarChart3,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useDismissable } from '../../hooks/useDismissable';
+import { isInstitutionalSuperAdmin } from '../../services/businessRules';
 
 export type ActiveTab =
   | 'dashboard'
@@ -27,6 +29,7 @@ export type ActiveTab =
   | 'personas'
   | 'solicitudes'
   | 'notificaciones'
+  | 'metricas'
   | 'reportes'
   | 'auditoria'
   | 'usuarios'
@@ -53,7 +56,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   isOpenMobile,
   onCloseMobile,
 }) => {
-  const { isAdmin } = useAuth();
+  const { isAdmin, user } = useAuth();
+  const isSuperAdmin = isInstitutionalSuperAdmin(user);
 
   useDismissable({
     onDismiss: onCloseMobile,
@@ -89,7 +93,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
       badge: unreadNotificationsCount > 0 ? unreadNotificationsCount : undefined,
       badgeColor: 'bg-rose-500',
     },
-    { id: 'reportes' as ActiveTab, label: 'Reportes', icon: FileSpreadsheet },
+    {
+      id: 'metricas' as ActiveTab,
+      label: 'Métricas y Seguimiento',
+      icon: BarChart3,
+      superAdminOnly: true,
+    },
+    {
+      id: 'reportes' as ActiveTab,
+      label: 'Reportes e Informes',
+      icon: FileSpreadsheet,
+      superAdminOnly: true,
+    },
     {
       id: 'usuarios' as ActiveTab,
       label: 'Control de Usuarios',
@@ -182,6 +197,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </p>
 
           {navItems.map((item) => {
+            if (item.superAdminOnly && !isSuperAdmin) return null;
             if (item.adminOnly && !isAdmin) return null;
             const Icon = item.icon;
             const isActive = activeTab === item.id;

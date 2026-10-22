@@ -56,10 +56,55 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
-    // Colección de Eventos (Lectura pública para calendario institucional, escritura para editores/admins aprobados)
+    // Función para verificar si un usuario es el creador del evento
+    function isEventCreator(eventData) {
+      return isAuthenticated() && (
+        eventData.createdBy == request.auth.uid || 
+        eventData.createdByEmail == request.auth.token.email
+      );
+    }
+
+    // Colección de Eventos
+    // Lectura pública para consulta de calendario
+    // Creación para editores/administradores aprobados
+    // Modificación general restringida estrictamente al Creador del evento o Superadministrador institucional
+    // Modificación de autorizaciones excepcionales restringida exclusivamente a Superadmin (proyectostic.med@udea.edu.co)
     match /events/{eventId} {
       allow read: if true;
-      allow create, update, delete: if isEditorOrAdmin();
+      allow create: if isEditorOrAdmin();
+      allow update: if isAuthenticated() && (
+        // Superadministrador institucional tiene acceso maestro
+        isSuperAdmin() ||
+        // El creador original puede modificar su evento
+        isEventCreator(resource.data) ||
+        // Si no es el creador pero es editor/admin, sólo puede actualizar tareas sin modificar campos generales ni autorizaciones
+        (
+          isEditorOrAdmin() &&
+          request.resource.data.title == resource.data.title &&
+          request.resource.data.date == resource.data.date &&
+          request.resource.data.startTime == resource.data.startTime &&
+          request.resource.data.endTime == resource.data.endTime &&
+          request.resource.data.spaceId == resource.data.spaceId &&
+          request.resource.data.isVirtual == resource.data.isVirtual &&
+          request.resource.data.exceptionalApproval == resource.data.exceptionalApproval
+        )
+      );
+      allow delete: if isSuperAdmin() || isEventCreator(resource.data);
+    }
+
+    // Colección de Programaciones Automáticas de Informes (Exclusivo Superadmin)
+    match /report_schedules/{scheduleId} {
+      allow read, write: if isSuperAdmin();
+    }
+
+    // Colección de Logs de Ejecución de Reportes (Exclusivo Superadmin)
+    match /report_logs/{logId} {
+      allow read, write: if isSuperAdmin();
+    }
+
+    // Colección de Logs de Recordatorios Automáticos
+    match /reminder_logs/{logId} {
+      allow read, write: if isAdmin();
     }
 
     // Tareas Personales (Aislamiento Multi-Tenant por usuario propietario y administradores)

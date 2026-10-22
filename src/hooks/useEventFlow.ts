@@ -12,6 +12,10 @@ import {
   UserProfile,
   PeopleGroup,
   PersonalTask,
+  EventTask,
+  EventTaskStatus,
+  AutomatedReportSchedule,
+  ReportExecutionLog,
 } from '../types';
 import {
   initializeSeedData,
@@ -24,6 +28,8 @@ import {
   subscribeToUsers,
   subscribeToGroups,
   subscribeToPersonalTasks,
+  subscribeToReportSchedules,
+  subscribeToReportLogs,
   updateUserRoleAndStatus,
   deleteUser,
   saveEvent,
@@ -41,6 +47,15 @@ import {
   savePersonalTask,
   togglePersonalTask,
   deletePersonalTask,
+  saveEventTask,
+  updateEventTaskStatus,
+  addEventTaskUpdate,
+  deleteEventTask,
+  requestExceptionalApproval,
+  resolveExceptionalApproval,
+  saveReportSchedule,
+  deleteReportSchedule,
+  saveReportExecutionLog,
 } from '../services/store';
 import { detectConflicts } from '../services/conflictEngine';
 import { getBogotaToday, getBogotaCurrentTime, timeStringToMinutes } from '../lib/timezone';
@@ -55,6 +70,8 @@ export function useEventFlow(currentUserId?: string) {
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [users, setUsers] = useState<UserProfile[]>([]);
+  const [reportSchedules, setReportSchedules] = useState<AutomatedReportSchedule[]>([]);
+  const [reportLogs, setReportLogs] = useState<ReportExecutionLog[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Inicializar y subscribirse en tiempo real
@@ -69,6 +86,8 @@ export function useEventFlow(currentUserId?: string) {
     const unsubNotifs = subscribeToNotifications(setNotifications);
     const unsubAudit = subscribeToAudit(setAuditLogs);
     const unsubUsers = subscribeToUsers(setUsers);
+    const unsubReportSchedules = subscribeToReportSchedules(setReportSchedules);
+    const unsubReportLogs = subscribeToReportLogs(setReportLogs);
 
     let unsubPersonalTasks = () => {};
     const effectiveUserId = currentUserId || 'admin-1';
@@ -86,6 +105,8 @@ export function useEventFlow(currentUserId?: string) {
       unsubNotifs();
       unsubAudit();
       unsubUsers();
+      unsubReportSchedules();
+      unsubReportLogs();
     };
   }, [currentUserId]);
 
@@ -246,6 +267,8 @@ export function useEventFlow(currentUserId?: string) {
     notifications,
     auditLogs,
     users,
+    reportSchedules,
+    reportLogs,
     pendingUsersCount,
     metrics,
     allActiveConflicts,
@@ -261,6 +284,15 @@ export function useEventFlow(currentUserId?: string) {
     savePersonalTask: handleSavePersonalTask,
     togglePersonalTask: handleTogglePersonalTask,
     deletePersonalTask: handleDeletePersonalTask,
+    saveEventTask,
+    updateEventTaskStatus,
+    addEventTaskUpdate,
+    deleteEventTask,
+    requestExceptionalApproval,
+    resolveExceptionalApproval,
+    saveReportSchedule,
+    deleteReportSchedule,
+    saveReportExecutionLog,
     createParticipationRequest,
     respondToParticipationRequest,
     markNotificationAsRead,

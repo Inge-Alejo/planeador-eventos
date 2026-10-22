@@ -452,3 +452,381 @@ export async function sendNewUserRegistrationNotificationToSuperAdmin(user: {
     htmlContent,
   });
 }
+
+// ============================================================================
+// 1. PLANTILLA Y ENVÍO DE RECORDATORIOS AUTOMÁTICOS DE EVENTO (CON TAREAS)
+// ============================================================================
+export interface EventReminderEmailParams {
+  personName: string;
+  personEmail: string;
+  eventTitle: string;
+  eventDate: string;
+  eventStartTime: string;
+  eventEndTime: string;
+  spaceName: string;
+  isVirtual?: boolean;
+  tasks?: Array<{
+    name: string;
+    stage: string;
+    priority: string;
+    status: string;
+    dueTime?: string;
+  }>;
+  notes?: string;
+  eventId?: string;
+  baseUrl?: string;
+}
+
+export function generateEventReminderHtml(params: EventReminderEmailParams): string {
+  const origin =
+    params.baseUrl ||
+    (typeof window !== 'undefined'
+      ? window.location.origin
+      : 'https://planeador-eventos-medicina-udea.vercel.app');
+  const eventUrl = `${origin}?eventId=${encodeURIComponent(params.eventId || '')}`;
+
+  const safePersonName = escapeHtml(params.personName);
+  const safeEventTitle = escapeHtml(params.eventTitle);
+  const safeSpaceName = escapeHtml(params.spaceName);
+  const modalityLabel = params.isVirtual ? '🌐 Virtual' : '📍 Presencial';
+
+  let tasksHtml = '';
+  if (params.tasks && params.tasks.length > 0) {
+    tasksHtml = `
+      <div style="margin: 20px 0; background-color: #f8fafc; border-left: 4px solid #059669; padding: 16px; border-radius: 8px;">
+        <h3 style="margin: 0 0 10px 0; font-size: 14px; color: #0f172a; font-weight: 700;">
+          📋 Tus responsabilidades y tareas asignadas para este evento:
+        </h3>
+        <ul style="margin: 0; padding-left: 18px; color: #334155; font-size: 13px; line-height: 1.6;">
+          ${params.tasks
+            .map(
+              (t) => `
+            <li style="margin-bottom: 6px;">
+              <strong>${escapeHtml(t.name)}</strong> 
+              <span style="font-size: 11px; background-color: #e2e8f0; color: #475569; padding: 1px 6px; border-radius: 4px; margin-left: 4px;">
+                ${t.stage.toUpperCase()}
+              </span>
+              <span style="font-size: 11px; color: #64748b; margin-left: 6px;">
+                (Estado: ${t.status} | Prioridad: ${t.priority})
+              </span>
+            </li>`
+            )
+            .join('')}
+        </ul>
+      </div>
+    `;
+  }
+
+  return `
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Recordatorio de Evento: ${safeEventTitle}</title>
+</head>
+<body style="margin:0; padding:0; background-color:#f1f5f9; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; color:#1e293b;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color:#f1f5f9; padding:30px 10px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="100%" style="max-width:600px; background-color:#ffffff; border-radius:18px; overflow:hidden; box-shadow:0 10px 25px -5px rgba(0,0,0,0.08); border:1px solid #e2e8f0;" cellspacing="0" cellpadding="0">
+          <tr>
+            <td style="background: linear-gradient(135deg, #065f46 0%, #047857 50%, #0f766e 100%); padding: 30px; text-align: center;">
+              <span style="color: #a7f3d0; font-size: 11px; font-weight: bold; letter-spacing: 0.5px; text-transform: uppercase;">
+                Facultad de Medicina • Universidad de Antioquia
+              </span>
+              <h1 style="color: #ffffff; font-size: 20px; font-weight: 800; margin: 8px 0 0 0;">
+                ⏰ Recordatorio de Evento Próximo
+              </h1>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 30px;">
+              <p style="font-size: 15px; color: #334155; margin-top: 0;">
+                Estimado(a) <strong>${safePersonName}</strong>,
+              </p>
+              <p style="font-size: 14px; color: #475569; line-height: 1.5;">
+                Te recordamos que tienes programada tu participación en el siguiente evento institucional:
+              </p>
+
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; margin: 20px 0; padding: 18px;">
+                <tr>
+                  <td style="padding-bottom: 8px;">
+                    <span style="font-size: 11px; font-weight: bold; color: #64748b; text-transform: uppercase;">📌 Evento:</span>
+                    <div style="font-size: 16px; font-weight: 700; color: #0f172a;">${safeEventTitle}</div>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding-bottom: 8px;">
+                    <span style="font-size: 11px; font-weight: bold; color: #64748b; text-transform: uppercase;">📅 Fecha y Horario:</span>
+                    <div style="font-size: 14px; font-weight: 600; color: #1e293b;">${params.eventDate} • ${params.eventStartTime} a ${params.eventEndTime} (Hora Col)</div>
+                  </td>
+                </tr>
+                <tr>
+                  <td>
+                    <span style="font-size: 11px; font-weight: bold; color: #64748b; text-transform: uppercase;">🏛️ Ubicación / Modalidad:</span>
+                    <div style="font-size: 14px; font-weight: 600; color: #047857;">${safeSpaceName} (${modalityLabel})</div>
+                  </td>
+                </tr>
+              </table>
+
+              ${tasksHtml}
+
+              <div style="text-align: center; margin: 25px 0;">
+                <a href="${eventUrl}" target="_blank" style="display: inline-block; background-color: #047857; color: #ffffff; text-decoration: none; padding: 12px 26px; border-radius: 10px; font-size: 13px; font-weight: 700;">
+                  🔍 Ver Detalles en el Planeador
+                </a>
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <td style="background-color: #f8fafc; border-top: 1px solid #e2e8f0; padding: 18px; text-align: center; font-size: 11px; color: #64748b;">
+              Facultad de Medicina • Universidad de Antioquia • Medellín, Colombia
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+  `.trim();
+}
+
+export async function sendEventReminderEmail(params: EventReminderEmailParams) {
+  const htmlContent = generateEventReminderHtml(params);
+  return await sendEmail({
+    toEmail: params.personEmail,
+    toName: params.personName,
+    subject: `⏰ Recordatorio: ${params.eventTitle} (${params.eventDate}) | Planeador UdeA`,
+    htmlContent,
+  });
+}
+
+// ============================================================================
+// 2. SOLICITUD DE AUTORIZACIÓN EXCEPCIONAL URGENTE (<27 DÍAS PRESENCIAL)
+// ============================================================================
+export interface ExceptionalRequestEmailParams {
+  eventTitle: string;
+  eventDate: string;
+  eventStartTime: string;
+  eventEndTime: string;
+  spaceName: string;
+  requesterName: string;
+  requesterEmail: string;
+  reason: string;
+  daysAnticipation: number;
+  eventId?: string;
+  baseUrl?: string;
+}
+
+export function generateExceptionalRequestHtml(params: ExceptionalRequestEmailParams): string {
+  const origin =
+    params.baseUrl ||
+    (typeof window !== 'undefined'
+      ? window.location.origin
+      : 'https://planeador-eventos-medicina-udea.vercel.app');
+  const reviewUrl = `${origin}?tab=eventos&urgentApproval=${encodeURIComponent(params.eventId || '')}`;
+
+  return `
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Solicitud de Autorización Excepcional Urgente</title>
+</head>
+<body style="margin:0; padding:0; background-color:#fef2f2; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; color:#1e293b;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="padding:30px 10px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="100%" style="max-width:600px; background-color:#ffffff; border-radius:18px; overflow:hidden; box-shadow:0 10px 25px -5px rgba(239,68,68,0.15); border:1px solid #fecaca;" cellspacing="0" cellpadding="0">
+          <tr>
+            <td style="background: linear-gradient(135deg, #991b1b 0%, #dc2626 100%); padding: 30px; text-align: center;">
+              <span style="color: #fecaca; font-size: 11px; font-weight: bold; letter-spacing: 0.5px; text-transform: uppercase;">
+                Facultad de Medicina • Universidad de Antioquia
+              </span>
+              <h1 style="color: #ffffff; font-size: 20px; font-weight: 800; margin: 8px 0 0 0;">
+                ⚠️ Solicitud de Autorización Excepcional Urgente
+              </h1>
+              <p style="color: #fee2e2; font-size: 13px; margin: 4px 0 0 0;">
+                Evento presencial con menos de 27 días de anticipación
+              </p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 30px;">
+              <p style="font-size: 15px; color: #334155; margin-top: 0;">
+                Estimado <strong>Superadministrador Institucional</strong>,
+              </p>
+              <p style="font-size: 14px; color: #475569; line-height: 1.5;">
+                Se ha generado una solicitud de excepción institucional para programar un evento presencial fuera del plazo ordinario regulado (requiere mínimo 27 días calendario):
+              </p>
+
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color: #fff1f2; border: 1px solid #fecdd3; border-radius: 12px; margin: 20px 0; padding: 18px;">
+                <tr>
+                  <td style="padding-bottom: 8px;">
+                    <span style="font-size: 11px; font-weight: bold; color: #9f1239; text-transform: uppercase;">Evento:</span>
+                    <div style="font-size: 16px; font-weight: 700; color: #881337;">${escapeHtml(params.eventTitle)}</div>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding-bottom: 8px;">
+                    <span style="font-size: 11px; font-weight: bold; color: #9f1239; text-transform: uppercase;">Fecha y Hora:</span>
+                    <div style="font-size: 14px; font-weight: 600; color: #1e293b;">${params.eventDate} (${params.eventStartTime} - ${params.eventEndTime}) • <strong>${params.daysAnticipation} días de anticipación</strong></div>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding-bottom: 8px;">
+                    <span style="font-size: 11px; font-weight: bold; color: #9f1239; text-transform: uppercase;">Espacio Solicitado:</span>
+                    <div style="font-size: 14px; font-weight: 600; color: #1e293b;">${escapeHtml(params.spaceName)} (Presencial)</div>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding-bottom: 8px;">
+                    <span style="font-size: 11px; font-weight: bold; color: #9f1239; text-transform: uppercase;">Solicitante:</span>
+                    <div style="font-size: 13px; font-weight: 600; color: #1e293b;">${escapeHtml(params.requesterName)} (${escapeHtml(params.requesterEmail)})</div>
+                  </td>
+                </tr>
+                <tr>
+                  <td>
+                    <span style="font-size: 11px; font-weight: bold; color: #9f1239; text-transform: uppercase;">Justificación de la Urgencia:</span>
+                    <div style="font-size: 13px; color: #4c0519; background-color: #ffffff; padding: 10px; border-radius: 8px; margin-top: 4px; border: 1px solid #fecdd3; font-style: italic;">
+                      "${escapeHtml(params.reason)}"
+                    </div>
+                  </td>
+                </tr>
+              </table>
+
+              <div style="text-align: center; margin: 25px 0;">
+                <a href="${reviewUrl}" target="_blank" style="display: inline-block; background-color: #dc2626; color: #ffffff; text-decoration: none; padding: 14px 28px; border-radius: 12px; font-size: 14px; font-weight: 700; box-shadow: 0 4px 12px rgba(220,38,38,0.3);">
+                  🛡️ Revisar y Resolver Autorización Excepcional
+                </a>
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <td style="background-color: #f8fafc; border-top: 1px solid #e2e8f0; padding: 18px; text-align: center; font-size: 11px; color: #64748b;">
+              Facultad de Medicina • Universidad de Antioquia • Medellín, Colombia
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+  `.trim();
+}
+
+export async function sendExceptionalRequestToSuperAdmin(params: ExceptionalRequestEmailParams) {
+  const htmlContent = generateExceptionalRequestHtml(params);
+  return await sendEmail({
+    toEmail: 'proyectostic.med@udea.edu.co',
+    toName: 'Superadministrador UdeA',
+    subject: `⚠️ Solicitud de Autorización Excepcional: ${params.eventTitle} (${params.daysAnticipation} días)`,
+    htmlContent,
+  });
+}
+
+// ============================================================================
+// 3. RESOLUCIÓN DE AUTORIZACIÓN EXCEPCIONAL (NOTIFICACIÓN AL SOLICITANTE)
+// ============================================================================
+export async function sendExceptionalResolutionToRequester(params: {
+  toEmail: string;
+  toName: string;
+  eventTitle: string;
+  status: 'aprobado' | 'rechazado';
+  notes?: string;
+}) {
+  const isApproved = params.status === 'aprobado';
+  const color = isApproved ? '#059669' : '#dc2626';
+  const statusLabel = isApproved ? 'Aprobada ✅' : 'Rechazada ❌';
+
+  const htmlContent = `
+    <div style="font-family: sans-serif; max-width: 600px; margin: auto; padding: 25px; border: 1px solid #e2e8f0; border-radius: 14px;">
+      <h2 style="color: ${color};">Solicitud de Excepción: ${statusLabel}</h2>
+      <p>Estimado(a) <strong>${escapeHtml(params.toName)}</strong>,</p>
+      <p>Te informamos que la solicitud de autorización excepcional para el evento <strong>"${escapeHtml(params.eventTitle)}"</strong> ha sido <strong>${statusLabel}</strong> por el Superadministrador Institucional.</p>
+      ${params.notes ? `<div style="background-color: #f8fafc; padding: 12px; border-radius: 8px; border-left: 4px solid ${color}; margin: 15px 0;"><strong>Observaciones:</strong> ${escapeHtml(params.notes)}</div>` : ''}
+      <p style="font-size: 12px; color: #64748b; margin-top: 25px;">Facultad de Medicina • Universidad de Antioquia</p>
+    </div>
+  `;
+
+  return await sendEmail({
+    toEmail: params.toEmail,
+    toName: params.toName,
+    subject: `Resolución de Solicitud: ${params.eventTitle} [${params.status.toUpperCase()}]`,
+    htmlContent,
+  });
+}
+
+// ============================================================================
+// 4. INFORME MENSUAL DE GESTIÓN Y REPORTES AUTOMATIZADOS
+// ============================================================================
+export async function sendAutomatedReportEmail(params: {
+  reportTitle: string;
+  periodCovered: string;
+  recipientEmail: string;
+  summaryMetrics: {
+    totalEvents: number;
+    completedTasks: number;
+    pendingTasks: number;
+    overdueTasks: number;
+    complianceRate: number;
+  };
+  executiveSummary: string;
+  reportUrl?: string;
+}) {
+  const htmlContent = `
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 640px; margin: auto; padding: 30px; background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px;">
+      <div style="background: linear-gradient(135deg, #1e1b4b 0%, #312e81 100%); padding: 24px; border-radius: 12px; text-align: center; color: #ffffff; margin-bottom: 24px;">
+        <span style="font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #c7d2fe;">Facultad de Medicina • UdeA</span>
+        <h1 style="font-size: 20px; margin: 8px 0 0 0;">📊 ${escapeHtml(params.reportTitle)}</h1>
+        <p style="font-size: 13px; margin: 4px 0 0 0; color: #e0e7ff;">Periodo: ${escapeHtml(params.periodCovered)}</p>
+      </div>
+
+      <p style="font-size: 14px; color: #334155;">Estimado Superadministrador,</p>
+      <p style="font-size: 14px; color: #475569; line-height: 1.5;">Se ha generado el reporte periódico automatizado correspondiente al periodo analizado:</p>
+
+      <table width="100%" style="border-collapse: collapse; margin: 20px 0; background-color: #f8fafc; border-radius: 8px; overflow: hidden;">
+        <tr style="border-bottom: 1px solid #e2e8f0;">
+          <td style="padding: 12px 16px; font-size: 13px; font-weight: 600; color: #475569;">Total Eventos del Periodo:</td>
+          <td style="padding: 12px 16px; font-size: 15px; font-weight: 700; color: #1e1b4b; text-align: right;">${params.summaryMetrics.totalEvents}</td>
+        </tr>
+        <tr style="border-bottom: 1px solid #e2e8f0;">
+          <td style="padding: 12px 16px; font-size: 13px; font-weight: 600; color: #475569;">Tareas Completadas:</td>
+          <td style="padding: 12px 16px; font-size: 15px; font-weight: 700; color: #059669; text-align: right;">${params.summaryMetrics.completedTasks}</td>
+        </tr>
+        <tr style="border-bottom: 1px solid #e2e8f0;">
+          <td style="padding: 12px 16px; font-size: 13px; font-weight: 600; color: #475569;">Tareas Pendientes / En Curso:</td>
+          <td style="padding: 12px 16px; font-size: 15px; font-weight: 700; color: #d97706; text-align: right;">${params.summaryMetrics.pendingTasks}</td>
+        </tr>
+        <tr style="border-bottom: 1px solid #e2e8f0;">
+          <td style="padding: 12px 16px; font-size: 13px; font-weight: 600; color: #475569;">Tareas Vencidas:</td>
+          <td style="padding: 12px 16px; font-size: 15px; font-weight: 700; color: #dc2626; text-align: right;">${params.summaryMetrics.overdueTasks}</td>
+        </tr>
+        <tr>
+          <td style="padding: 12px 16px; font-size: 13px; font-weight: 600; color: #475569;">Porcentaje de Cumplimiento:</td>
+          <td style="padding: 12px 16px; font-size: 15px; font-weight: 700; color: #2563eb; text-align: right;">${params.summaryMetrics.complianceRate}%</td>
+        </tr>
+      </table>
+
+      <div style="background-color: #f1f5f9; padding: 16px; border-radius: 8px; margin-bottom: 24px;">
+        <h3 style="font-size: 13px; color: #1e293b; margin: 0 0 8px 0;">Resumen Ejecutivo:</h3>
+        <p style="font-size: 13px; color: #475569; margin: 0; line-height: 1.5;">${escapeHtml(params.executiveSummary)}</p>
+      </div>
+
+      <div style="text-align: center; margin-top: 20px;">
+        <a href="${params.reportUrl || 'https://planeador-eventos-medicina-udea.vercel.app/?tab=reportes'}" style="background-color: #312e81; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 10px; font-size: 13px; font-weight: 700;">
+          📥 Consultar Reporte Completo en el Planeador
+        </a>
+      </div>
+    </div>
+  `;
+
+  return await sendEmail({
+    toEmail: params.recipientEmail,
+    toName: 'Superadministrador UdeA',
+    subject: `📊 ${params.reportTitle} - ${params.periodCovered} | Planeador UdeA`,
+    htmlContent,
+  });
+}

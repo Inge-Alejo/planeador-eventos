@@ -97,10 +97,109 @@ export type EventStatus =
   | 'borrador' 
   | 'programado' 
   | 'pendiente_confirmacion' 
+  | 'pendiente_autorizacion'
   | 'confirmado' 
   | 'en_ejecucion' 
   | 'finalizado' 
   | 'cancelado';
+
+// Tareas asociadas a Eventos organizadas por Etapas
+export type EventTaskStage = 'previa' | 'durante' | 'posterior';
+export type EventTaskStatus = 'pendiente' | 'en_curso' | 'completada' | 'bloqueada' | 'cancelada';
+export type EventTaskPriority = 'alta' | 'media' | 'baja';
+
+export interface EventTaskUpdate {
+  id: string;
+  authorUid: string;
+  authorName: string;
+  authorEmail?: string;
+  text: string;
+  statusChange?: EventTaskStatus;
+  createdAt: string; // ISO
+}
+
+export interface EventTask {
+  id: string;
+  eventId: string;
+  name: string;
+  description?: string;
+  stage: EventTaskStage;
+  status: EventTaskStatus;
+  priority: EventTaskPriority;
+  responsibleIds: string[]; // IDs de Person
+  startDate?: string; // YYYY-MM-DD
+  startTime?: string; // HH:mm
+  dueDate: string; // YYYY-MM-DD
+  dueTime?: string; // HH:mm
+  exclusiveAttention?: boolean; // Requiere atención exclusiva (alerta de cruce de horario)
+  updates: EventTaskUpdate[];
+  createdAt: string;
+  updatedAt?: string;
+}
+
+// Configuración de Recordatorios Automáticos por Correo
+export type ReminderStatus = 'programado' | 'enviado' | 'error' | 'reprogramado' | 'cancelado';
+
+export interface ReminderLog {
+  id: string;
+  sentAt: string;
+  scheduledFor: string;
+  recipientsCount: number;
+  recipientEmails: string[];
+  status: 'exitoso' | 'error';
+  errorMessage?: string;
+}
+
+export interface EventReminderConfig {
+  enabled: boolean;
+  daysBefore: number; // Mínimo 1 día antes, configurable
+  status: ReminderStatus;
+  scheduledDate: string; // Fecha en la que debe dispararse (YYYY-MM-DD)
+  sentAt?: string;
+  error?: string;
+  history?: ReminderLog[];
+}
+
+// Configuración de Recurrencia de Eventos
+export type RecurrenceFrequency = 'ninguna' | 'diaria' | 'semanal' | 'mensual' | 'personalizada';
+
+export interface RecurrenceConfig {
+  frequency: RecurrenceFrequency;
+  interval?: number; // Cada X días/semanas/meses
+  weekDays?: number[]; // [0..6] (0 = Domingo, 1 = Lunes, etc.)
+  endDate?: string; // YYYY-MM-DD
+  occurrencesCount?: number; // Número específico de ocurrencias
+  seriesId?: string; // ID compartido de la serie
+  occurrenceIndex?: number; // 1, 2, 3...
+  totalOccurrences?: number;
+}
+
+// Regla de 27 días y Autorización Excepcional
+export type ExceptionalApprovalStatus = 'ninguna' | 'pendiente' | 'aprobado' | 'rechazado';
+
+export interface ExceptionalApproval {
+  required: boolean;
+  status: ExceptionalApprovalStatus;
+  requestedAt?: string;
+  requestedBy?: {
+    uid: string;
+    name: string;
+    email: string;
+  };
+  reason?: string; // Justificación obligatoria de la urgencia
+  daysAnticipation?: number;
+  resolvedAt?: string;
+  resolvedBy?: {
+    uid: string;
+    name: string;
+    email: string;
+  };
+  notes?: string;
+  originalSnapshot?: {
+    date: string;
+    isVirtual: boolean;
+  };
+}
 
 export interface EventEntity {
   id: string;
@@ -132,6 +231,58 @@ export interface EventEntity {
     email: string;
   };
   updatedAt?: string;
+  // Campos ampliados
+  tasks?: EventTask[];
+  reminder?: EventReminderConfig;
+  recurrence?: RecurrenceConfig;
+  exceptionalApproval?: ExceptionalApproval;
+}
+
+// Reportes Programados y Automatizados (Exclusivo Superadministrador)
+export type ReportType =
+  | 'informe_general'
+  | 'informe_equipo'
+  | 'informe_persona'
+  | 'informe_eventos'
+  | 'informe_tareas_pendientes'
+  | 'informe_mensual_gestion'
+  | 'informe_eventos_urgentes';
+
+export type ReportFrequency = 'diaria' | 'semanal' | 'mensual';
+export type ReportExportFormat = 'pdf' | 'xlsx' | 'csv';
+
+export interface AutomatedReportSchedule {
+  id: string;
+  name: string;
+  reportType: ReportType;
+  frequency: ReportFrequency;
+  dataPeriod: 'ayer' | 'semana_anterior' | 'mes_anterior' | 'ultimos_30_dias' | 'ultimos_90_dias';
+  format: ReportExportFormat;
+  recipientEmail: string; // Exclusivo proyectostic.med@udea.edu.co
+  active: boolean;
+  startDate: string; // YYYY-MM-DD
+  endDate?: string; // YYYY-MM-DD
+  filters?: Record<string, any>;
+  lastRunAt?: string;
+  lastRunStatus?: 'exitoso' | 'error';
+  lastRunError?: string;
+  createdAt: string;
+}
+
+export interface ReportExecutionLog {
+  id: string;
+  scheduleId?: string;
+  scheduleName?: string;
+  reportType: ReportType;
+  periodCovered: string;
+  executedAt: string;
+  status: 'exitoso' | 'error';
+  recipientEmail: string;
+  format: ReportExportFormat;
+  recordCount: number;
+  downloadUrl?: string;
+  summaryText?: string;
+  error?: string;
 }
 
 export type RequestStatus = 'pendiente' | 'confirmada' | 'rechazada' | 'cancelada';
