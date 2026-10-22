@@ -124,15 +124,56 @@ export const PersonalTasksView: React.FC<PersonalTasksViewProps> = ({
     isOpen: isNewTaskModalOpen,
   });
 
-  // Eventos disponibles para vincular en el selector (no cancelados)
+  // Eventos disponibles para vincular: ÚNICAMENTE a los que se encuentre relacionado el usuario
   const availableEventsForDropdown = useMemo(() => {
+    const userEmail = user?.email?.toLowerCase().trim();
+    const userUid = user?.uid;
+    const personId = currentPerson?.id;
+
     return events
-      .filter((e) => e.status !== 'cancelado')
+      .filter((e) => {
+        if (e.status === 'cancelado') return false;
+
+        // 1. Creador del evento
+        const isCreator = Boolean(
+          (userUid && e.createdBy?.uid === userUid) ||
+          (userEmail && e.createdBy?.email?.toLowerCase() === userEmail)
+        );
+
+        // 2. Responsable principal del evento
+        const isResponsible = Boolean(personId && e.responsibleId === personId);
+
+        // 3. Convocado o invitado en la lista de personas
+        const isInvited = Boolean(
+          personId && Array.isArray(e.peopleIds) && e.peopleIds.includes(personId)
+        );
+
+        // 4. Asignado a alguna de las tareas del evento (en cualquiera de sus etapas)
+        const isTaskResponsible = Boolean(
+          Array.isArray(e.tasks) &&
+            e.tasks.some(
+              (t) =>
+                (personId && t.responsibleIds?.includes(personId)) ||
+                (userUid && t.responsibleIds?.includes(userUid)) ||
+                (userEmail && t.responsibleIds?.includes(userEmail))
+            )
+        );
+
+        // 5. Tiene una solicitud de participación en el evento
+        const hasRequest = requests.some(
+          (r) =>
+            r.eventId === e.id &&
+            ((personId && r.personId === personId) ||
+              (userEmail && r.personEmail?.toLowerCase() === userEmail))
+        );
+
+        return isCreator || isResponsible || isInvited || isTaskResponsible || hasRequest;
+      })
       .sort((a, b) => {
         if (a.date !== b.date) return a.date.localeCompare(b.date);
         return a.startTime.localeCompare(b.startTime);
       });
-  }, [events]);
+  }, [events, user, currentPerson, requests]);
 
   // Filtrado de tareas
   const filteredTasks = useMemo(() => {
@@ -808,11 +849,17 @@ export const PersonalTasksView: React.FC<PersonalTasksViewProps> = ({
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-medium text-slate-700 truncate"
                 >
                   <option value="">-- Sin anidar (Tarea personal independiente) --</option>
-                  {availableEventsForDropdown.map((evt) => (
-                    <option key={evt.id} value={evt.id}>
-                      📅 {evt.date} • {evt.title} ({evt.isVirtual ? 'Virtual' : evt.spaceName || 'Presencial'})
+                  {availableEventsForDropdown.length === 0 ? (
+                    <option value="" disabled>
+                      (No tienes eventos asociados o asignados actualmente)
                     </option>
-                  ))}
+                  ) : (
+                    availableEventsForDropdown.map((evt) => (
+                      <option key={evt.id} value={evt.id}>
+                        📅 {evt.date} • {evt.title} ({evt.isVirtual ? 'Virtual' : evt.spaceName || 'Presencial'})
+                      </option>
+                    ))
+                  )}
                 </select>
 
                 {selectedEventId && (

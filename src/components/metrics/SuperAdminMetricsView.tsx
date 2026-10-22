@@ -407,7 +407,7 @@ export const SuperAdminMetricsView: React.FC<SuperAdminMetricsViewProps> = ({
           </span>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-6 gap-2.5">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-2.5">
           {/* Periodo */}
           <div className="col-span-2">
             <label className="block text-[10px] font-bold text-slate-500 mb-1">Rango Temporal</label>
@@ -460,6 +460,23 @@ export const SuperAdminMetricsView: React.FC<SuperAdminMetricsViewProps> = ({
             </select>
           </div>
 
+          {/* Persona */}
+          <div>
+            <label className="block text-[10px] font-bold text-slate-500 mb-1">Persona</label>
+            <select
+              value={selectedPerson}
+              onChange={(e) => setSelectedPerson(e.target.value)}
+              className="w-full rounded-xl border border-slate-200 bg-slate-50 px-2 py-1.5 text-xs text-slate-800 focus:outline-none"
+            >
+              <option value="todos">Todas las personas</option>
+              {people.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.firstName} {p.lastName}
+                </option>
+              ))}
+            </select>
+          </div>
+
           {/* Etapa */}
           <div>
             <label className="block text-[10px] font-bold text-slate-500 mb-1">Etapa de Tarea</label>
@@ -495,6 +512,44 @@ export const SuperAdminMetricsView: React.FC<SuperAdminMetricsViewProps> = ({
             </select>
           </div>
         </div>
+
+        {/* Indicadores de Filtros Activos con Botón de Limpiar */}
+        {(selectedGroup !== 'todos' || selectedPerson !== 'todos' || selectedModality !== 'todos' || selectedTaskStage !== 'todos' || selectedEventType !== 'todos') && (
+          <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-100 text-xs">
+            <span className="font-bold text-slate-500 text-[11px] uppercase tracking-wider">Filtros activos:</span>
+            {selectedGroup !== 'todos' && (
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700 font-bold border border-indigo-200 text-xs">
+                Equipo: {groups.find((g) => g.id === selectedGroup)?.name || selectedGroup}
+                <button type="button" onClick={() => setSelectedGroup('todos')} className="hover:text-indigo-900 ml-1 font-black">✕</button>
+              </span>
+            )}
+            {selectedPerson !== 'todos' && (
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-bold border border-emerald-200 text-xs">
+                Persona: {people.find((p) => p.id === selectedPerson) ? `${people.find((p) => p.id === selectedPerson)?.firstName} ${people.find((p) => p.id === selectedPerson)?.lastName}` : selectedPerson}
+                <button type="button" onClick={() => setSelectedPerson('todos')} className="hover:text-emerald-900 ml-1 font-black">✕</button>
+              </span>
+            )}
+            {selectedModality !== 'todos' && (
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-sky-50 text-sky-700 font-bold border border-sky-200 text-xs capitalize">
+                Modalidad: {selectedModality}
+                <button type="button" onClick={() => setSelectedModality('todos')} className="hover:text-sky-900 ml-1 font-black">✕</button>
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedGroup('todos');
+                setSelectedPerson('todos');
+                setSelectedModality('todos');
+                setSelectedTaskStage('todos');
+                setSelectedEventType('todos');
+              }}
+              className="text-[11px] text-slate-400 hover:text-rose-600 font-semibold underline ml-2 transition-colors"
+            >
+              Restablecer todos los filtros
+            </button>
+          </div>
+        )}
 
         {period === 'personalizado' && (
           <div className="flex items-center gap-3 pt-2 border-t border-slate-100">
@@ -583,6 +638,332 @@ export const SuperAdminMetricsView: React.FC<SuperAdminMetricsViewProps> = ({
           <p className="mt-2 text-[11px] text-slate-500">
             Regla de 27 días presenciales evaluada
           </p>
+        </div>
+      </div>
+
+      {/* ========================================================================= */}
+      {/* SECCIÓN DE GRÁFICOS VISUALES INTERACTIVOS (MODALIDADES, ETAPAS, EQUIPOS) */}
+      {/* ========================================================================= */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        {/* GRÁFICO 1: Distribución de Eventos por Modalidad y Estado (Donut SVG) */}
+        <div className="p-5 rounded-3xl bg-white border border-slate-200/90 shadow-xs space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+              <BarChart3 className="w-4 h-4 text-indigo-600" />
+              Distribución de Modalidad y Estado de Eventos
+            </h3>
+            <span className="text-[11px] font-semibold text-slate-400">
+              Total: {totalEvents} eventos
+            </span>
+          </div>
+
+          <div className="flex flex-col sm:flex-row items-center gap-6 pt-2">
+            {/* Donut Ring SVG */}
+            <div className="relative w-36 h-36 shrink-0 flex items-center justify-center">
+              <svg className="w-full h-full -rotate-90" viewBox="0 0 100 100">
+                {/* Background Ring */}
+                <circle
+                  cx="50"
+                  cy="50"
+                  r="40"
+                  className="stroke-slate-100"
+                  strokeWidth="14"
+                  fill="transparent"
+                />
+                {/* Presencial Segment (Emerald) */}
+                {totalEvents > 0 && (
+                  <circle
+                    cx="50"
+                    cy="50"
+                    r="40"
+                    className="stroke-emerald-500 transition-all duration-700"
+                    strokeWidth="14"
+                    strokeDasharray="251.3"
+                    strokeDashoffset={251.3 - (251.3 * (periodEvents.filter((e) => !e.isVirtual).length / totalEvents))}
+                    strokeLinecap="round"
+                    fill="transparent"
+                  />
+                )}
+                {/* Virtual Segment (Indigo) */}
+                {totalEvents > 0 && periodEvents.filter((e) => e.isVirtual).length > 0 && (
+                  <circle
+                    cx="50"
+                    cy="50"
+                    r="40"
+                    className="stroke-indigo-600 transition-all duration-700"
+                    strokeWidth="14"
+                    strokeDasharray="251.3"
+                    strokeDashoffset={251.3 - (251.3 * (periodEvents.filter((e) => e.isVirtual).length / totalEvents))}
+                    strokeLinecap="round"
+                    fill="transparent"
+                    style={{
+                      transformOrigin: 'center',
+                      transform: `rotate(${((periodEvents.filter((e) => !e.isVirtual).length / totalEvents) * 360)}deg)`,
+                    }}
+                  />
+                )}
+              </svg>
+              <div className="absolute flex flex-col items-center justify-center text-center">
+                <span className="text-2xl font-black text-slate-900 leading-none">{totalEvents}</span>
+                <span className="text-[10px] text-slate-400 font-bold uppercase mt-0.5">Eventos</span>
+              </div>
+            </div>
+
+            {/* Leyenda y Desglose Detallado */}
+            <div className="flex-1 w-full space-y-2.5 text-xs">
+              <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="w-3 h-3 rounded-md bg-emerald-500 shrink-0" />
+                  <span className="font-semibold text-slate-700">Presenciales</span>
+                </div>
+                <div className="text-right">
+                  <strong className="text-slate-900">{periodEvents.filter((e) => !e.isVirtual).length}</strong>
+                  <span className="text-slate-400 text-[11px] ml-1.5">
+                    ({totalEvents > 0 ? Math.round((periodEvents.filter((e) => !e.isVirtual).length / totalEvents) * 100) : 0}%)
+                  </span>
+                </div>
+              </div>
+
+              <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="w-3 h-3 rounded-md bg-indigo-600 shrink-0" />
+                  <span className="font-semibold text-slate-700">Virtuales</span>
+                </div>
+                <div className="text-right">
+                  <strong className="text-slate-900">{periodEvents.filter((e) => e.isVirtual).length}</strong>
+                  <span className="text-slate-400 text-[11px] ml-1.5">
+                    ({totalEvents > 0 ? Math.round((periodEvents.filter((e) => e.isVirtual).length / totalEvents) * 100) : 0}%)
+                  </span>
+                </div>
+              </div>
+
+              {/* Estados de Eventos */}
+              <div className="grid grid-cols-3 gap-1.5 pt-1 text-[11px]">
+                <div className="bg-emerald-50 text-emerald-800 p-1.5 rounded-lg text-center font-bold">
+                  <span className="block text-[10px] font-normal uppercase text-emerald-600">Listos</span>
+                  {periodEvents.filter((e) => e.status === 'finalizado').length}
+                </div>
+                <div className="bg-indigo-50 text-indigo-800 p-1.5 rounded-lg text-center font-bold">
+                  <span className="block text-[10px] font-normal uppercase text-indigo-600">Próximos</span>
+                  {upcomingEvents.length}
+                </div>
+                <div className="bg-rose-50 text-rose-800 p-1.5 rounded-lg text-center font-bold">
+                  <span className="block text-[10px] font-normal uppercase text-rose-600">Cancelados</span>
+                  {cancelledEvents.length}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* GRÁFICO 2: Desempeño Operativo por Etapas del Evento (Bar Chart Comparativo) */}
+        <div className="p-5 rounded-3xl bg-white border border-slate-200/90 shadow-xs space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+              <Clock className="w-4 h-4 text-indigo-600" />
+              Cumplimiento por Etapas (Previa, Durante, Posterior)
+            </h3>
+            <span className="text-[11px] font-semibold text-slate-400">
+              Total: {totalTasksCount} tareas
+            </span>
+          </div>
+
+          <div className="pt-2 space-y-4">
+            {(['previa', 'durante', 'posterior'] as const).map((stg) => {
+              const data = stageStats[stg];
+              const label = stg === 'previa' ? '📌 Etapa Previa' : stg === 'durante' ? '⚡ Etapa Durante' : '🏁 Etapa Posterior';
+              const completedPct = data.total > 0 ? Math.round((data.completed / data.total) * 100) : 0;
+              const overduePct = data.total > 0 ? Math.round((data.overdue / data.total) * 100) : 0;
+              const inProgressPct = Math.max(0, 100 - completedPct - overduePct);
+
+              return (
+                <div key={stg} className="space-y-1.5">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-bold text-slate-800">{label}</span>
+                    <span className="text-slate-500 font-semibold text-[11px]">
+                      {data.completed}/{data.total} completadas ({completedPct}%)
+                    </span>
+                  </div>
+
+                  {/* Barra Multi-Segmento */}
+                  <div className="w-full bg-slate-100 rounded-full h-3 flex overflow-hidden">
+                    {completedPct > 0 && (
+                      <div
+                        style={{ width: `${completedPct}%` }}
+                        className="bg-emerald-500 h-full transition-all duration-500"
+                        title={`Completadas: ${data.completed} (${completedPct}%)`}
+                      />
+                    )}
+                    {inProgressPct > 0 && (
+                      <div
+                        style={{ width: `${inProgressPct}%` }}
+                        className="bg-indigo-400 h-full transition-all duration-500"
+                        title={`En Curso / Pendientes: ${data.total - data.completed - data.overdue}`}
+                      />
+                    )}
+                    {overduePct > 0 && (
+                      <div
+                        style={{ width: `${overduePct}%` }}
+                        className="bg-rose-500 h-full transition-all duration-500"
+                        title={`Vencidas: ${data.overdue} (${overduePct}%)`}
+                      />
+                    )}
+                  </div>
+
+                  <div className="flex items-center justify-between text-[10px] text-slate-400">
+                    <span className="text-emerald-700 font-bold">{data.completed} completadas</span>
+                    <span>{data.total - data.completed - data.overdue} pendientes</span>
+                    <span className={data.overdue > 0 ? 'text-rose-600 font-bold' : 'text-slate-400'}>
+                      {data.overdue} vencidas
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* GRÁFICO 3 & 4: Carga de Trabajo por Equipos y Ranking de Personas con Filtro Directo */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        {/* GRÁFICO 3: Carga por Equipos con Clic para Filtrar */}
+        <div className="p-5 rounded-3xl bg-white border border-slate-200/90 shadow-xs space-y-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                <Users className="w-4 h-4 text-indigo-600" />
+                Carga Operativa por Equipos
+              </h3>
+              <p className="text-[11px] text-slate-400 mt-0.5">
+                Haz clic en cualquier equipo para filtrar el tablero completo
+              </p>
+            </div>
+            {selectedGroup !== 'todos' && (
+              <button
+                type="button"
+                onClick={() => setSelectedGroup('todos')}
+                className="text-[11px] text-indigo-600 font-bold hover:underline"
+              >
+                Ver todos
+              </button>
+            )}
+          </div>
+
+          <div className="space-y-2.5 pt-1">
+            {teamMetrics.slice(0, 6).map((tm) => {
+              const isSelected = selectedGroup === tm.id;
+              return (
+                <div
+                  key={tm.id}
+                  onClick={() => setSelectedGroup(isSelected ? 'todos' : tm.id)}
+                  className={`p-3 rounded-2xl border transition-all cursor-pointer ${
+                    isSelected
+                      ? 'bg-indigo-50/80 border-indigo-300 shadow-xs ring-2 ring-indigo-500/20'
+                      : 'bg-slate-50/60 border-slate-200/70 hover:bg-slate-100/80 hover:border-slate-300'
+                  }`}
+                >
+                  <div className="flex items-center justify-between text-xs mb-1.5">
+                    <span className="font-bold text-slate-800 flex items-center gap-1.5">
+                      {tm.name}
+                      {isSelected && (
+                        <span className="text-[10px] bg-indigo-600 text-white px-1.5 py-0.2 rounded font-bold">
+                          Filtrado
+                        </span>
+                      )}
+                    </span>
+                    <span className="text-[11px] font-bold text-slate-600">
+                      {tm.complianceRate}% cumplido • {tm.totalTasks} tareas
+                    </span>
+                  </div>
+
+                  {/* Barra de progreso */}
+                  <div className="w-full bg-slate-200/80 rounded-full h-2 overflow-hidden flex">
+                    <div
+                      style={{ width: `${tm.complianceRate}%` }}
+                      className="bg-emerald-500 h-full rounded-full"
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between text-[10px] text-slate-400 mt-1.5">
+                    <span>{tm.membersCount} integrantes • {tm.eventsCount} eventos</span>
+                    {tm.overdueTasks > 0 && (
+                      <span className="text-rose-600 font-bold">{tm.overdueTasks} vencidas</span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* GRÁFICO 4: Ranking y Desempeño por Personas con Clic para Filtrar */}
+        <div className="p-5 rounded-3xl bg-white border border-slate-200/90 shadow-xs space-y-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                <CheckSquare className="w-4 h-4 text-emerald-600" />
+                Ranking de Asignación por Personas
+              </h3>
+              <p className="text-[11px] text-slate-400 mt-0.5">
+                Haz clic en una persona para aislar sus eventos y compromisos
+              </p>
+            </div>
+            {selectedPerson !== 'todos' && (
+              <button
+                type="button"
+                onClick={() => setSelectedPerson('todos')}
+                className="text-[11px] text-emerald-600 font-bold hover:underline"
+              >
+                Ver todas
+              </button>
+            )}
+          </div>
+
+          <div className="space-y-2 pt-1">
+            {personMetrics
+              .filter((p) => p.tasksCount > 0 || p.eventsCount > 0)
+              .sort((a, b) => b.tasksCount - a.tasksCount)
+              .slice(0, 6)
+              .map((pm) => {
+                const isSelected = selectedPerson === pm.id;
+                return (
+                  <div
+                    key={pm.id}
+                    onClick={() => setSelectedPerson(isSelected ? 'todos' : pm.id)}
+                    className={`p-2.5 rounded-2xl border transition-all cursor-pointer flex items-center justify-between gap-3 ${
+                      isSelected
+                        ? 'bg-emerald-50/80 border-emerald-300 shadow-xs ring-2 ring-emerald-500/20'
+                        : 'bg-slate-50/60 border-slate-200/70 hover:bg-slate-100/80 hover:border-slate-300'
+                    }`}
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-bold text-xs text-slate-900 truncate">{pm.name}</span>
+                        {isSelected && (
+                          <span className="text-[9px] bg-emerald-600 text-white px-1.5 py-0.2 rounded font-bold shrink-0">
+                            Activo
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-[10px] text-slate-400 block truncate">{pm.roleTitle}</span>
+                    </div>
+
+                    <div className="w-28 shrink-0 text-right space-y-1">
+                      <div className="flex items-center justify-between text-[11px] font-bold">
+                        <span className="text-slate-500">{pm.tasksCount} tareas</span>
+                        <span className="text-emerald-700">{pm.complianceRate}%</span>
+                      </div>
+                      <div className="w-full bg-slate-200 rounded-full h-1.5 overflow-hidden">
+                        <div
+                          style={{ width: `${pm.complianceRate}%` }}
+                          className="bg-emerald-500 h-full rounded-full"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+          </div>
         </div>
       </div>
 

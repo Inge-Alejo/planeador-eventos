@@ -21,6 +21,8 @@ import {
   Eye,
   CheckCircle2,
   Sparkles,
+  BarChart3,
+  PieChart,
 } from 'lucide-react';
 import {
   EventEntity,
@@ -145,15 +147,37 @@ export const SuperAdminReportsView: React.FC<SuperAdminReportsViewProps> = ({
     }
   }, [selectedPeriod, today]);
 
-  // Eventos y Tareas filtradas para el reporte
+  // Eventos y Tareas filtradas para el reporte (con soporte para equipo y persona)
   const filteredEvents = useMemo(() => {
     return events.filter((e) => {
       if (e.date < startDate || e.date > endDate) return false;
       if (selectedModality === 'presencial' && e.isVirtual) return false;
       if (selectedModality === 'virtual' && !e.isVirtual) return false;
+
+      // Filtro por Equipo
+      if (selectedTeam !== 'todos') {
+        const grp = groups.find((g) => g.id === selectedTeam);
+        if (grp && grp.memberIds) {
+          const hasMember =
+            grp.memberIds.includes(e.responsibleId) ||
+            grp.memberIds.some((mId) => e.peopleIds?.includes(mId)) ||
+            (e.tasks && e.tasks.some((t) => t.responsibleIds?.some((rId) => grp.memberIds.includes(rId))));
+          if (!hasMember) return false;
+        }
+      }
+
+      // Filtro por Persona
+      if (selectedPerson !== 'todos') {
+        const hasPerson =
+          e.responsibleId === selectedPerson ||
+          (Array.isArray(e.peopleIds) && e.peopleIds.includes(selectedPerson)) ||
+          (e.tasks && e.tasks.some((t) => t.responsibleIds?.includes(selectedPerson)));
+        if (!hasPerson) return false;
+      }
+
       return true;
     });
-  }, [events, startDate, endDate, selectedModality]);
+  }, [events, startDate, endDate, selectedModality, selectedTeam, selectedPerson, groups]);
 
   const prevFilteredEvents = useMemo(() => {
     if (!prevStartDate || !prevEndDate) return [];
@@ -213,6 +237,76 @@ export const SuperAdminReportsView: React.FC<SuperAdminReportsViewProps> = ({
     }
     return recs;
   }, [overdueTasks, urgentEvents, complianceRate]);
+
+  // Cálculos para Gráficos Visuales Ejecutivos del Reporte (Sección 12.5)
+  const stageStats = useMemo(() => {
+    const previa = allReportTasks.filter((t) => t.stage === 'previa');
+    const durante = allReportTasks.filter((t) => t.stage === 'durante');
+    const posterior = allReportTasks.filter((t) => t.stage === 'posterior');
+    return {
+      previa: { total: previa.length, completed: previa.filter((t) => t.status === 'completada').length },
+      durante: { total: durante.length, completed: durante.filter((t) => t.status === 'completada').length },
+      posterior: { total: posterior.length, completed: posterior.filter((t) => t.status === 'completada').length },
+    };
+  }, [allReportTasks]);
+
+  // Desempeño por Equipos en el reporte
+  const reportTeamStats = useMemo(() => {
+    return groups
+      .map((g) => {
+        const gEvents = filteredEvents.filter(
+          (e) =>
+            g.memberIds.includes(e.responsibleId) ||
+            g.memberIds.some((mId) => e.peopleIds?.includes(mId)) ||
+            e.tasks?.some((t) => t.responsibleIds?.some((rId) => g.memberIds.includes(rId)))
+        );
+        const tasks: EventTask[] = [];
+        gEvents.forEach((e) =>
+          (e.tasks || []).forEach((t) => {
+            if (t.responsibleIds?.some((rId) => g.memberIds.includes(rId))) {
+              tasks.push(t);
+            }
+          })
+        );
+        const completed = tasks.filter((t) => t.status === 'completada').length;
+        return {
+          id: g.id,
+          name: g.name,
+          color: g.color || '#4f46e5',
+          totalEvents: gEvents.length,
+          totalTasks: tasks.length,
+          completedTasks: completed,
+          rate: tasks.length > 0 ? Math.round((completed / tasks.length) * 100) : 100,
+        };
+      })
+      .filter((g) => g.totalEvents > 0 || g.totalTasks > 0);
+  }, [groups, filteredEvents]);
+
+  // Desempeño por Personas con mayor volumen de compromisos
+  const reportPersonStats = useMemo(() => {
+    const map = new Map<string, { total: number; completed: number }>();
+    allReportTasks.forEach((t) => {
+      (t.responsibleIds || []).forEach((rId) => {
+        const curr = map.get(rId) || { total: 0, completed: 0 };
+        curr.total += 1;
+        if (t.status === 'completada') curr.completed += 1;
+        map.set(rId, curr);
+      });
+    });
+    return Array.from(map.entries())
+      .map(([id, stats]) => {
+        const p = people.find((item) => item.id === id);
+        return {
+          id,
+          name: p ? `${p.firstName} ${p.lastName}` : id,
+          total: stats.total,
+          completed: stats.completed,
+          rate: stats.total > 0 ? Math.round((stats.completed / stats.total) * 100) : 0,
+        };
+      })
+      .sort((a, b) => b.total - a.total)
+      .slice(0, 5);
+  }, [allReportTasks, people]);
 
   // EXPORTAR A CSV (UTF-8 con BOM)
   const handleExportCSV = () => {
@@ -392,7 +486,7 @@ export const SuperAdminReportsView: React.FC<SuperAdminReportsViewProps> = ({
         <div className="space-y-6">
           {/* BARRA DE CONFIGURACIÓN Y FILTROS DEL INFORME */}
           <div className="p-4 rounded-3xl bg-white border border-slate-200 shadow-xs space-y-3 print:hidden">
-            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-6 gap-3">
               <div>
                 <label className="block text-[10px] font-bold text-slate-500 mb-1">Plantilla de Informe</label>
                 <select
@@ -437,12 +531,47 @@ export const SuperAdminReportsView: React.FC<SuperAdminReportsViewProps> = ({
                 </select>
               </div>
 
+              {/* Filtro por Equipo */}
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 mb-1">Filtrar por Equipo</label>
+                <select
+                  value={selectedTeam}
+                  onChange={(e) => setSelectedTeam(e.target.value)}
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none font-medium"
+                >
+                  <option value="todos">Todos los equipos</option>
+                  {groups.map((g) => (
+                    <option key={g.id} value={g.id}>
+                      {g.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Filtro por Persona */}
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 mb-1">Filtrar por Persona</label>
+                <select
+                  value={selectedPerson}
+                  onChange={(e) => setSelectedPerson(e.target.value)}
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none font-medium"
+                >
+                  <option value="todos">Todas las personas</option>
+                  {people.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.firstName} {p.lastName}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
               {/* Botones de Exportación */}
-              <div className="flex items-end gap-2">
+              <div className="flex items-end gap-1.5">
                 <button
                   type="button"
                   onClick={handlePrintPDF}
-                  className="flex-1 py-1.5 px-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition-all shadow-xs flex items-center justify-center gap-1.5"
+                  className="flex-1 py-1.5 px-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition-all shadow-xs flex items-center justify-center gap-1"
+                  title="Imprimir o Guardar como PDF"
                 >
                   <Printer className="w-3.5 h-3.5" />
                   <span>PDF</span>
@@ -450,7 +579,8 @@ export const SuperAdminReportsView: React.FC<SuperAdminReportsViewProps> = ({
                 <button
                   type="button"
                   onClick={handleExportExcel}
-                  className="flex-1 py-1.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-all shadow-xs flex items-center justify-center gap-1.5"
+                  className="flex-1 py-1.5 px-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-all shadow-xs flex items-center justify-center gap-1"
+                  title="Descargar libro de cálculo Excel"
                 >
                   <Download className="w-3.5 h-3.5" />
                   <span>Excel</span>
@@ -458,12 +588,49 @@ export const SuperAdminReportsView: React.FC<SuperAdminReportsViewProps> = ({
                 <button
                   type="button"
                   onClick={handleExportCSV}
-                  className="flex-1 py-1.5 px-3 rounded-xl bg-slate-700 hover:bg-slate-800 text-white text-xs font-bold transition-all shadow-xs flex items-center justify-center gap-1.5"
+                  className="flex-1 py-1.5 px-2.5 rounded-xl bg-slate-700 hover:bg-slate-800 text-white text-xs font-bold transition-all shadow-xs flex items-center justify-center gap-1"
+                  title="Descargar datos en formato CSV"
                 >
                   <span>CSV</span>
                 </button>
               </div>
             </div>
+
+            {/* Chips de Filtros Activos del Informe */}
+            {(selectedTeam !== 'todos' || selectedPerson !== 'todos' || selectedModality !== 'todos') && (
+              <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-100 text-xs">
+                <span className="font-bold text-slate-500 text-[11px] uppercase tracking-wider">Filtro aplicado al reporte:</span>
+                {selectedTeam !== 'todos' && (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700 font-bold border border-indigo-200 text-xs">
+                    Equipo: {groups.find((g) => g.id === selectedTeam)?.name || selectedTeam}
+                    <button type="button" onClick={() => setSelectedTeam('todos')} className="hover:text-indigo-900 ml-1 font-black">✕</button>
+                  </span>
+                )}
+                {selectedPerson !== 'todos' && (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-bold border border-emerald-200 text-xs">
+                    Persona: {people.find((p) => p.id === selectedPerson) ? `${people.find((p) => p.id === selectedPerson)?.firstName} ${people.find((p) => p.id === selectedPerson)?.lastName}` : selectedPerson}
+                    <button type="button" onClick={() => setSelectedPerson('todos')} className="hover:text-emerald-900 ml-1 font-black">✕</button>
+                  </span>
+                )}
+                {selectedModality !== 'todos' && (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-sky-50 text-sky-700 font-bold border border-sky-200 text-xs capitalize">
+                    Modalidad: {selectedModality}
+                    <button type="button" onClick={() => setSelectedModality('todos')} className="hover:text-sky-900 ml-1 font-black">✕</button>
+                  </span>
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedTeam('todos');
+                    setSelectedPerson('todos');
+                    setSelectedModality('todos');
+                  }}
+                  className="text-[11px] text-slate-400 hover:text-rose-600 font-semibold underline ml-2 transition-colors"
+                >
+                  Restablecer filtros
+                </button>
+              </div>
+            )}
           </div>
 
           {/* PREVISUALIZACIÓN FORMAL DEL INFORME (DISEÑO INSTITUCIONAL UDEA - SECCIÓN 12) */}
@@ -524,6 +691,173 @@ export const SuperAdminReportsView: React.FC<SuperAdminReportsViewProps> = ({
                 <span className="text-[10px] font-bold text-slate-400 uppercase">Tareas Vencidas</span>
                 <p className="text-xl font-black text-rose-600 mt-1">{overdueTasks}</p>
                 <p className="text-[10px] text-rose-500">atención inmediata</p>
+              </div>
+            </div>
+
+            {/* 12.5 & 12.6 Visualización Gráfica del Desempeño y Carga Operativa (Imprimible & Exportable) */}
+            <div className="space-y-4 pt-2">
+              <div className="flex items-center justify-between">
+                <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wide flex items-center gap-1.5">
+                  <BarChart3 className="w-4 h-4 text-indigo-600" />
+                  <span>Distribución y Gráficos Visuales de Gestión</span>
+                </h3>
+                <span className="text-[11px] text-slate-400 font-medium print:hidden">
+                  Gráficos vectoriales optimizados para exportación PDF
+                </span>
+              </div>
+
+              {/* Gráfico 1: Barra Segmentada de Balance Operativo */}
+              <div className="p-4 rounded-2xl border border-slate-200 bg-slate-50/50 space-y-3">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-bold text-slate-700">Balance Operativo de Compromisos ({totalTasks} tareas totales)</span>
+                  <span className="font-mono text-indigo-700 font-bold">{complianceRate}% completado</span>
+                </div>
+
+                {/* Segmented Bar */}
+                {totalTasks > 0 ? (
+                  <div className="w-full h-5 rounded-full overflow-hidden flex bg-slate-200 shadow-inner">
+                    <div
+                      style={{ width: `${(completedTasks / totalTasks) * 100}%` }}
+                      className="bg-emerald-500 h-full transition-all"
+                      title={`Completadas: ${completedTasks}`}
+                    />
+                    <div
+                      style={{ width: `${(inProgressTasks / totalTasks) * 100}%` }}
+                      className="bg-amber-400 h-full transition-all"
+                      title={`En curso: ${inProgressTasks}`}
+                    />
+                    <div
+                      style={{
+                        width: `${((pendingTasks - overdueTasks > 0 ? pendingTasks - overdueTasks : 0) / totalTasks) * 100}%`,
+                      }}
+                      className="bg-slate-400 h-full transition-all"
+                      title={`Pendientes a tiempo: ${pendingTasks}`}
+                    />
+                    <div
+                      style={{ width: `${(overdueTasks / totalTasks) * 100}%` }}
+                      className="bg-rose-500 h-full transition-all"
+                      title={`Vencidas: ${overdueTasks}`}
+                    />
+                  </div>
+                ) : (
+                  <div className="w-full h-5 rounded-full bg-slate-100 flex items-center justify-center text-[10px] text-slate-400">
+                    Sin tareas registradas en este periodo
+                  </div>
+                )}
+
+                {/* Leyenda del gráfico */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1 text-[11px]">
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0" />
+                    <span className="text-slate-600">Completadas:</span>
+                    <strong className="text-slate-900 ml-auto">{completedTasks}</strong>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-full bg-amber-400 shrink-0" />
+                    <span className="text-slate-600">En curso:</span>
+                    <strong className="text-slate-900 ml-auto">{inProgressTasks}</strong>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-full bg-slate-400 shrink-0" />
+                    <span className="text-slate-600">Pendientes:</span>
+                    <strong className="text-slate-900 ml-auto">{pendingTasks}</strong>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-full bg-rose-500 shrink-0" />
+                    <span className="text-slate-600">Vencidas:</span>
+                    <strong className="text-rose-700 ml-auto">{overdueTasks}</strong>
+                  </div>
+                </div>
+              </div>
+
+              {/* Gráficos en Dos Columnas: Carga por Etapas y Rendimiento por Equipos/Personas */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* Gráfico 2: Carga y Avance por Etapas Operativas */}
+                <div className="p-4 rounded-2xl border border-slate-200 bg-white space-y-3">
+                  <span className="text-xs font-bold text-slate-700 uppercase tracking-wide block">
+                    Carga Operativa por Etapas
+                  </span>
+                  <div className="space-y-2.5">
+                    {[
+                      { label: 'Etapa Previa (Planeación)', data: stageStats.previa, color: 'bg-indigo-600' },
+                      { label: 'Durante el Evento (Ejecución)', data: stageStats.durante, color: 'bg-teal-600' },
+                      { label: 'Etapa Posterior (Cierre y Memorias)', data: stageStats.posterior, color: 'bg-amber-500' },
+                    ].map((stg, idx) => {
+                      const pct = stg.data.total > 0 ? Math.round((stg.data.completed / stg.data.total) * 100) : 0;
+                      return (
+                        <div key={idx} className="space-y-1">
+                          <div className="flex justify-between text-xs">
+                            <span className="font-medium text-slate-600">{stg.label}</span>
+                            <span className="text-slate-900 font-bold font-mono">
+                              {stg.data.completed} / {stg.data.total} ({pct}%)
+                            </span>
+                          </div>
+                          <div className="w-full h-2 rounded-full bg-slate-100 overflow-hidden">
+                            <div
+                              className={`h-full ${stg.color} transition-all duration-500`}
+                              style={{ width: `${pct}%` }}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Gráfico 3: Desempeño por Equipos o Personas Activas */}
+                <div className="p-4 rounded-2xl border border-slate-200 bg-white space-y-3">
+                  <span className="text-xs font-bold text-slate-700 uppercase tracking-wide block">
+                    {selectedTeam !== 'todos' ? 'Compromisos de Miembros del Equipo' : 'Carga por Equipos de Trabajo'}
+                  </span>
+
+                  {reportTeamStats.length > 0 ? (
+                    <div className="space-y-2.5">
+                      {reportTeamStats.slice(0, 4).map((tm) => (
+                        <div key={tm.id} className="space-y-1">
+                          <div className="flex justify-between text-xs">
+                            <span className="font-medium text-slate-700 truncate max-w-[170px]" title={tm.name}>
+                              {tm.name}
+                            </span>
+                            <span className="text-slate-900 font-bold font-mono text-[11px]">
+                              {tm.completedTasks}/{tm.totalTasks} ({tm.rate}%)
+                            </span>
+                          </div>
+                          <div className="w-full h-2 rounded-full bg-slate-100 overflow-hidden">
+                            <div
+                              className="h-full rounded-full transition-all duration-500"
+                              style={{ width: `${tm.rate}%`, backgroundColor: tm.color }}
+                            />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : reportPersonStats.length > 0 ? (
+                    <div className="space-y-2.5">
+                      {reportPersonStats.slice(0, 4).map((psn) => (
+                        <div key={psn.id} className="space-y-1">
+                          <div className="flex justify-between text-xs">
+                            <span className="font-medium text-slate-700 truncate max-w-[170px]" title={psn.name}>
+                              {psn.name}
+                            </span>
+                            <span className="text-slate-900 font-bold font-mono text-[11px]">
+                              {psn.completed}/{psn.total} ({psn.rate}%)
+                            </span>
+                          </div>
+                          <div className="w-full h-2 rounded-full bg-slate-100 overflow-hidden">
+                            <div
+                              className="h-full bg-emerald-600 rounded-full transition-all duration-500"
+                              style={{ width: `${psn.rate}%` }}
+                            />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-slate-400 italic py-4 text-center">
+                      No hay suficientes datos de equipos o personas en el periodo seleccionado.
+                    </p>
+                  )}
+                </div>
               </div>
             </div>
 
