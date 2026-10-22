@@ -1739,10 +1739,19 @@ export async function respondToParticipationRequest(
         // Si confirmó, actualizar estado del evento en Firestore
         if (newStatus === 'confirmada') {
           try {
-            await updateDoc(doc(db, 'events', reqData.eventId), {
-              status: 'confirmado',
-              updatedAt: now,
-            });
+            const eventRef = doc(db, 'events', reqData.eventId);
+            const eventSnap = await getDoc(eventRef);
+            if (eventSnap.exists()) {
+              const currentPeopleIds: string[] = eventSnap.data()?.peopleIds || [];
+              const updatedPeople = currentPeopleIds.includes(reqData.personId)
+                ? currentPeopleIds
+                : [...currentPeopleIds, reqData.personId];
+              await updateDoc(eventRef, {
+                status: 'confirmado',
+                peopleIds: updatedPeople,
+                updatedAt: now,
+              });
+            }
           } catch (e) {
             console.warn('Error confirmando evento en Firestore:', e);
           }
@@ -1794,8 +1803,14 @@ export async function respondToParticipationRequest(
   if (newStatus === 'confirmada') {
     const events = load<EventEntity[]>(STORAGE_KEYS.EVENTS, initialEvents);
     const evt = events.find((e) => e.id === target.eventId);
-    if (evt && evt.status === 'pendiente_confirmacion') {
-      evt.status = 'confirmado';
+    if (evt) {
+      if (evt.status === 'pendiente_confirmacion') {
+        evt.status = 'confirmado';
+      }
+      if (!evt.peopleIds) evt.peopleIds = [];
+      if (!evt.peopleIds.includes(target.personId)) {
+        evt.peopleIds.push(target.personId);
+      }
       save(STORAGE_KEYS.EVENTS, events);
       eventListeners.forEach((fn) => fn(events));
     }

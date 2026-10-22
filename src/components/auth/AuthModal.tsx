@@ -236,6 +236,9 @@ export const AuthModal: React.FC = () => {
               <input
                 type="email"
                 required
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
                 placeholder="usuario@udea.edu.co"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -269,6 +272,9 @@ export const AuthModal: React.FC = () => {
                 <input
                   type={showPassword ? 'text' : 'password'}
                   required
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
                   placeholder="Mínimo 6 caracteres"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}

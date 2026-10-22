@@ -60,22 +60,20 @@ export const PeopleList: React.FC<PeopleListProps> = ({
           <div className="flex bg-slate-100 p-1 rounded-xl">
             <button
               onClick={() => setActiveSubTab('people')}
-              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                activeSubTab === 'people'
-                  ? 'bg-white text-indigo-600 shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
+              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${activeSubTab === 'people'
+                ? 'bg-white text-indigo-600 shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
+                }`}
             >
               <Users className="w-4 h-4" />
               <span>Colaboradores & Usuarios ({people.length})</span>
             </button>
             <button
               onClick={() => setActiveSubTab('groups')}
-              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                activeSubTab === 'groups'
-                  ? 'bg-white text-emerald-600 shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
+              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${activeSubTab === 'groups'
+                ? 'bg-white text-emerald-600 shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
+                }`}
             >
               <Layers className="w-4 h-4" />
               <span>Grupos y Equipos ({groups.length})</span>
@@ -152,11 +150,10 @@ export const PeopleList: React.FC<PeopleListProps> = ({
                             {person.firstName} {person.lastName}
                           </h3>
                           <span
-                            className={`inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-semibold ${
-                              person.status === 'activo'
-                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200/60'
-                                : 'bg-slate-100 text-slate-600 border border-slate-200'
-                            }`}
+                            className={`inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-semibold ${person.status === 'activo'
+                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200/60'
+                              : 'bg-slate-100 text-slate-600 border border-slate-200'
+                              }`}
                           >
                             {person.status === 'activo' ? 'Activo' : 'Inactivo'}
                           </span>

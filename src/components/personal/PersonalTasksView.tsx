@@ -70,39 +70,88 @@ export const PersonalTasksView: React.FC<PersonalTasksViewProps> = ({
 }) => {
   const today = getBogotaToday();
 
-  // Encontrar el perfil de Person asociado al usuario actual (por email)
+  // Encontrar el perfil de Person asociado al usuario actual (por email o UID)
   const currentPerson = useMemo(() => {
-    if (!user?.email) return null;
-    return people.find((p) => p.email.toLowerCase() === user.email.toLowerCase()) || null;
+    if (!user) return null;
+    const cleanEmail = user.email?.toLowerCase().trim();
+    return (
+      (cleanEmail ? people.find((p) => p.email?.toLowerCase().trim() === cleanEmail) : null) ||
+      people.find((p) => p.id === user.uid) ||
+      null
+    );
   }, [user, people]);
 
   // Solicitudes de participación pendientes para este usuario
   const myPendingRequests = useMemo(() => {
-    if (!currentPerson) return [];
-    return requests.filter(
-      (r) => r.personId === currentPerson.id && r.status === 'pendiente'
-    );
-  }, [currentPerson, requests]);
-
-  // Mis próximos eventos (donde soy responsable o invitado)
-  const myUpcomingEvents = useMemo(() => {
+    const cleanEmail = user?.email?.toLowerCase().trim();
     const personId = currentPerson?.id;
+    const userUid = user?.uid;
+
+    return requests.filter((r) => {
+      if (r.status !== 'pendiente') return false;
+      const matchPersonId = Boolean(personId && r.personId === personId);
+      const matchUid = Boolean(userUid && r.personId === userUid);
+      const matchEmail = Boolean(cleanEmail && r.personEmail?.toLowerCase().trim() === cleanEmail);
+      return matchPersonId || matchUid || matchEmail;
+    });
+  }, [currentPerson, requests, user]);
+
+  // Mis próximos eventos (donde soy responsable, invitado, creador, asignado a tareas o con asistencia confirmada)
+  const myUpcomingEvents = useMemo(() => {
+    const cleanEmail = user?.email?.toLowerCase().trim();
+    const personId = currentPerson?.id;
+    const userUid = user?.uid;
+
     return events
       .filter((e) => {
         if (e.status === 'cancelado') return false;
-        if (e.date < today) return false;
-        if (personId) {
-          const isInvited = Array.isArray(e.peopleIds) && e.peopleIds.includes(personId);
-          const isResp = e.responsibleId === personId;
-          return isInvited || isResp;
-        }
-        return false;
+
+        // 1. Invitado en lista de personas
+        const isInvited = Boolean(
+          (personId && Array.isArray(e.peopleIds) && e.peopleIds.includes(personId)) ||
+          (userUid && Array.isArray(e.peopleIds) && e.peopleIds.includes(userUid))
+        );
+
+        // 2. Responsable principal del evento
+        const isResp = Boolean(
+          (personId && e.responsibleId === personId) ||
+          (userUid && e.responsibleId === userUid)
+        );
+
+        // 3. Creador del evento
+        const isCreator = Boolean(
+          (userUid && e.createdBy?.uid === userUid) ||
+          (cleanEmail && e.createdBy?.email?.toLowerCase().trim() === cleanEmail)
+        );
+
+        // 4. Con asistencia confirmada en solicitudes
+        const hasConfirmedAttendance = requests.some(
+          (r) =>
+            r.eventId === e.id &&
+            r.status === 'confirmada' &&
+            ((personId && r.personId === personId) ||
+              (userUid && r.personId === userUid) ||
+              (cleanEmail && r.personEmail?.toLowerCase().trim() === cleanEmail))
+        );
+
+        // 5. Responsable de alguna tarea del evento
+        const hasEventTask = Boolean(
+          Array.isArray(e.tasks) &&
+            e.tasks.some(
+              (t) =>
+                (personId && t.responsibleIds?.includes(personId)) ||
+                (userUid && t.responsibleIds?.includes(userUid)) ||
+                (cleanEmail && t.responsibleIds?.includes(cleanEmail))
+            )
+        );
+
+        return isInvited || isResp || isCreator || hasConfirmedAttendance || hasEventTask;
       })
       .sort((a, b) => {
         if (a.date !== b.date) return a.date.localeCompare(b.date);
         return a.startTime.localeCompare(b.startTime);
       });
-  }, [currentPerson, events, today]);
+  }, [currentPerson, events, user, requests]);
 
   // Filtros de tareas
   const [taskFilter, setTaskFilter] = useState<'todas' | 'pendientes' | 'completadas'>('pendientes');

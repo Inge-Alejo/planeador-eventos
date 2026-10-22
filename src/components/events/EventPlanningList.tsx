@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { EventEntity, Space, Person, EventType, EventStatus } from '../../types';
 import {
   CalendarCheck,
@@ -12,6 +12,9 @@ import {
   Trash2,
   Edit,
   ExternalLink,
+  ArrowUpDown,
+  ArrowDown,
+  ArrowUp,
 } from 'lucide-react';
 import { formatFriendlyDate, formatShortDate, format12Hour } from '../../lib/timezone';
 import { useAuth } from '../../context/AuthContext';
@@ -43,22 +46,37 @@ export const EventPlanningList: React.FC<EventPlanningListProps> = ({
   const [filterType, setFilterType] = useState('todos');
   const [filterStatus, setFilterStatus] = useState(initialFilter || 'todos');
   const [filterSpace, setFilterSpace] = useState('todos');
+  const [dateSortOrder, setDateSortOrder] = useState<'desc' | 'asc'>('desc'); // 'desc' = mayor a menor (más recientes primero)
 
-  const filtered = events.filter((e) => {
-    if (filterType !== 'todos' && e.type !== filterType) return false;
-    if (filterStatus !== 'todos' && e.status !== filterStatus) return false;
-    if (filterSpace !== 'todos' && e.spaceId !== filterSpace) return false;
-    if (query) {
-      const q = query.toLowerCase();
-      return (
-        e.title.toLowerCase().includes(q) ||
-        e.spaceName.toLowerCase().includes(q) ||
-        e.responsibleName.toLowerCase().includes(q) ||
-        (e.description && e.description.toLowerCase().includes(q))
-      );
-    }
-    return true;
-  });
+  const filtered = useMemo(() => {
+    return events
+      .filter((e) => {
+        if (filterType !== 'todos' && e.type !== filterType) return false;
+        if (filterStatus !== 'todos' && e.status !== filterStatus) return false;
+        if (filterSpace !== 'todos' && e.spaceId !== filterSpace) return false;
+        if (query) {
+          const q = query.toLowerCase();
+          return (
+            e.title.toLowerCase().includes(q) ||
+            e.spaceName.toLowerCase().includes(q) ||
+            e.responsibleName.toLowerCase().includes(q) ||
+            (e.description && e.description.toLowerCase().includes(q))
+          );
+        }
+        return true;
+      })
+      .sort((a, b) => {
+        if (dateSortOrder === 'desc') {
+          // Mayor a menor: fechas más recientes / futuras primero
+          if (a.date !== b.date) return b.date.localeCompare(a.date);
+          return b.startTime.localeCompare(a.startTime);
+        } else {
+          // Menor a mayor: fechas más antiguas primero
+          if (a.date !== b.date) return a.date.localeCompare(b.date);
+          return a.startTime.localeCompare(b.startTime);
+        }
+      });
+  }, [events, filterType, filterStatus, filterSpace, query, dateSortOrder]);
 
   const getStatusBadge = (status: EventStatus) => {
     switch (status) {
@@ -101,8 +119,8 @@ export const EventPlanningList: React.FC<EventPlanningListProps> = ({
           )}
         </div>
 
-        {/* Barra de Filtros Combinables */}
-        <div className="grid grid-cols-1 sm:grid-cols-4 gap-2 pt-2 border-t border-slate-100">
+        {/* Barra de Filtros Combinables y Ordenamiento */}
+        <div className="grid grid-cols-1 sm:grid-cols-5 gap-2 pt-2 border-t border-slate-100">
           <input
             type="text"
             placeholder="Buscar por título, responsable..."
@@ -156,6 +174,27 @@ export const EventPlanningList: React.FC<EventPlanningListProps> = ({
               </option>
             ))}
           </select>
+
+          {/* Selector de Ordenamiento de Fechas (Mayor a menor / Menor a mayor) */}
+          <div className="flex items-center gap-1">
+            <select
+              value={dateSortOrder}
+              onChange={(e) => setDateSortOrder(e.target.value as 'desc' | 'asc')}
+              className="flex-1 rounded-xl border border-indigo-200 bg-indigo-50/60 px-2 py-1.5 text-[11px] font-bold text-indigo-900 focus:outline-none"
+              title="Organizar eventos por fecha"
+            >
+              <option value="desc">Fecha: Mayor a menor (Recientes primero)</option>
+              <option value="asc">Fecha: Menor a mayor (Antiguos primero)</option>
+            </select>
+            <button
+              type="button"
+              onClick={() => setDateSortOrder(dateSortOrder === 'desc' ? 'asc' : 'desc')}
+              className="p-1.5 rounded-xl border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 transition-colors cursor-pointer shrink-0"
+              title={dateSortOrder === 'desc' ? 'Orden: Mayor a menor (Clic para cambiar)' : 'Orden: Menor a mayor (Clic para cambiar)'}
+            >
+              {dateSortOrder === 'desc' ? <ArrowDown className="w-4 h-4" /> : <ArrowUp className="w-4 h-4" />}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -166,7 +205,20 @@ export const EventPlanningList: React.FC<EventPlanningListProps> = ({
             <thead className="bg-slate-50/75 border-b border-slate-200 text-[11px] font-bold uppercase tracking-wider text-slate-400">
               <tr>
                 <th className="py-3.5 px-4">Evento / Actividad</th>
-                <th className="py-3.5 px-4">Fecha y Horario</th>
+                <th
+                  onClick={() => setDateSortOrder(dateSortOrder === 'desc' ? 'asc' : 'desc')}
+                  className="py-3.5 px-4 cursor-pointer hover:bg-slate-100 transition-colors select-none group"
+                  title="Clic para cambiar orden: Mayor a menor / Menor a mayor"
+                >
+                  <div className="flex items-center gap-1.5">
+                    <span>Fecha y Horario</span>
+                    {dateSortOrder === 'desc' ? (
+                      <ArrowDown className="w-3.5 h-3.5 text-indigo-600" />
+                    ) : (
+                      <ArrowUp className="w-3.5 h-3.5 text-indigo-600" />
+                    )}
+                  </div>
+                </th>
                 <th className="py-3.5 px-4">Espacio Físico</th>
                 <th className="py-3.5 px-4">Responsable</th>
                 <th className="py-3.5 px-4">Convocados</th>

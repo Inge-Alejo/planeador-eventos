@@ -15,6 +15,8 @@ import {
   Clock,
   Lock,
   LogIn,
+  X,
+  ExternalLink,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { AppNotification } from '../../types';
@@ -46,12 +48,12 @@ export const Header: React.FC<HeaderProps> = ({
     canEdit,
     isPending,
     isReadOnly,
-    switchRole,
     logout,
     openAuthModal,
   } = useAuth();
   const [showNotifications, setShowNotifications] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const [selectedNotificationForModal, setSelectedNotificationForModal] = useState<AppNotification | null>(null);
 
   const notificationRef = React.useRef<HTMLDivElement>(null);
   const profileMenuRef = React.useRef<HTMLDivElement>(null);
@@ -235,9 +237,11 @@ export const Header: React.FC<HeaderProps> = ({
                       key={notif.id}
                       onClick={() => {
                         onMarkNotificationRead(notif.id);
+                        setShowNotifications(false);
                         if (notif.eventId && onSelectEventFromNotification) {
                           onSelectEventFromNotification(notif.eventId);
-                          setShowNotifications(false);
+                        } else {
+                          setSelectedNotificationForModal(notif);
                         }
                       }}
                       className={`flex items-start gap-3 p-3 transition-colors hover:bg-slate-50 cursor-pointer rounded-xl ${
@@ -321,43 +325,19 @@ export const Header: React.FC<HeaderProps> = ({
                 <div className="border-b border-slate-100 pb-3 px-2">
                   <p className="text-xs font-bold text-slate-900">{user.displayName}</p>
                   <p className="text-[11px] text-slate-500 truncate">{user.email}</p>
-                </div>
-
-                {/* Selector Rápido de Rol (Para pruebas del usuario) */}
-                <div className="py-2">
-                  <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400 px-2">
-                    Simular Rol de Usuario
-                  </label>
-                  <div className="mt-1 grid grid-cols-2 gap-1 bg-slate-100 p-1 rounded-xl">
-                    <button
-                      onClick={() => switchRole('administrador')}
-                      className={`flex items-center justify-center gap-1.5 py-1.5 text-xs font-semibold rounded-lg transition-all ${
-                        isAdmin ? 'bg-white text-indigo-700 shadow-xs' : 'text-slate-600 hover:text-slate-900'
-                      }`}
-                    >
-                      <ShieldCheck className="w-3.5 h-3.5" />
-                      Admin
-                    </button>
-                    <button
-                      onClick={() => switchRole('usuario')}
-                      className={`flex items-center justify-center gap-1.5 py-1.5 text-xs font-semibold rounded-lg transition-all ${
-                        !isAdmin ? 'bg-white text-indigo-700 shadow-xs' : 'text-slate-600 hover:text-slate-900'
-                      }`}
-                    >
-                      <User className="w-3.5 h-3.5" />
-                      Usuario
-                    </button>
-                  </div>
+                  <span className="inline-block mt-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-indigo-50 text-indigo-700 capitalize border border-indigo-100">
+                    Rol: {user.role || 'usuario'}
+                  </span>
                 </div>
 
                 {/* Iniciar con otra cuenta / Salir */}
-                <div className="border-t border-slate-100 pt-2 space-y-1">
+                <div className="pt-2 space-y-1">
                   <button
                     onClick={() => {
                       setShowProfileMenu(false);
                       openAuthModal('login');
                     }}
-                    className="w-full flex items-center gap-2 px-2.5 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 rounded-lg transition-colors"
+                    className="w-full flex items-center gap-2 px-2.5 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 rounded-lg transition-colors cursor-pointer"
                   >
                     <LogIn className="w-4 h-4 text-slate-400" />
                     Cambiar de cuenta
@@ -368,7 +348,7 @@ export const Header: React.FC<HeaderProps> = ({
                       setShowProfileMenu(false);
                       logout();
                     }}
-                    className="w-full flex items-center gap-2 px-2.5 py-2 text-xs font-medium text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                    className="w-full flex items-center gap-2 px-2.5 py-2 text-xs font-medium text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
                   >
                     <LogOut className="w-4 h-4" />
                     Cerrar Sesión
@@ -379,6 +359,68 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
         )}
       </div>
+
+      {/* Modal de Detalle de Notificación */}
+      {selectedNotificationForModal && (
+        <div
+          onClick={() => setSelectedNotificationForModal(null)}
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="relative w-full max-w-md rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl space-y-4 animate-in zoom-in-95 duration-150"
+          >
+            <div className="flex items-start justify-between gap-3 border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2.5 rounded-2xl bg-indigo-50 text-indigo-600">
+                  <Bell className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">{selectedNotificationForModal.title}</h3>
+                  <span className="text-[11px] text-slate-400 capitalize">Tipo: {selectedNotificationForModal.type}</span>
+                </div>
+              </div>
+              <button
+                onClick={() => setSelectedNotificationForModal(null)}
+                className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
+                aria-label="Cerrar"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-700 leading-relaxed bg-slate-50 p-4 rounded-2xl border border-slate-100">
+              {selectedNotificationForModal.message}
+            </p>
+
+            <div className="flex items-center justify-between pt-2">
+              <span className="text-[10px] text-slate-400">
+                {new Date(selectedNotificationForModal.createdAt).toLocaleString('es-CO')}
+              </span>
+              <div className="flex items-center gap-2">
+                {selectedNotificationForModal.eventId && onSelectEventFromNotification && (
+                  <button
+                    onClick={() => {
+                      onSelectEventFromNotification(selectedNotificationForModal.eventId!);
+                      setSelectedNotificationForModal(null);
+                    }}
+                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-600 text-white text-xs font-bold hover:bg-indigo-700 transition-all shadow-xs cursor-pointer"
+                  >
+                    <span>Ver Evento</span>
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </button>
+                )}
+                <button
+                  onClick={() => setSelectedNotificationForModal(null)}
+                  className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-all cursor-pointer"
+                >
+                  Cerrar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </header>
   );
 };

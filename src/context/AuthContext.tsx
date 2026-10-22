@@ -186,11 +186,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const loginWithEmail = async (email: string, pass: string) => {
     setLoading(true);
     try {
+      const cleanEmail = email.trim().toLowerCase();
+      const cleanPass = pass.trim();
+
       if (isFirebaseConfigured && auth) {
-        await signInWithEmailAndPassword(auth, email.trim(), pass);
+        await signInWithEmailAndPassword(auth, cleanEmail, cleanPass);
       } else {
         // Fallback local simulado
-        const cleanEmail = email.trim().toLowerCase();
         const isRootAdmin =
           ADMIN_EMAILS.includes(cleanEmail) ||
           cleanEmail === 'proyectostic.med@udea.edu.co';
@@ -220,12 +222,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setLoading(true);
     try {
       const cleanEmail = email.trim().toLowerCase();
+      const cleanPass = pass.trim();
       const isRootAdmin =
         ADMIN_EMAILS.includes(cleanEmail) ||
         cleanEmail === 'proyectostic.med@udea.edu.co';
 
       if (isFirebaseConfigured && auth && db) {
-        const userCred = await createUserWithEmailAndPassword(auth, cleanEmail, pass);
+        const userCred = await createUserWithEmailAndPassword(auth, cleanEmail, cleanPass);
         if (displayName) {
           try {
             await updateProfile(userCred.user, { displayName });
