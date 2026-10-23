@@ -66,6 +66,7 @@ const MainApp: React.FC = () => {
     saveEventTask,
     updateEventTaskStatus,
     addEventTaskUpdate,
+    deleteEventTask,
     resolveExceptionalApproval,
     reportSchedules,
     saveReportSchedule,
@@ -335,6 +336,8 @@ const MainApp: React.FC = () => {
               onDeleteTask={deletePersonalTask}
               onSaveTask={savePersonalTask}
               onSaveEventTask={saveEventTask}
+              onUpdateEventTaskStatus={updateEventTaskStatus}
+              onDeleteEventTask={deleteEventTask}
               onRespondRequest={async (reqId, resp) => {
                 const req = requests.find((r) => r.id === reqId);
                 if (req) {
@@ -514,6 +517,9 @@ const MainApp: React.FC = () => {
         onOpenSimulatedEmail={(req) => setSimulatedEmailRequest(req)}
         onUpdateTaskStatus={updateEventTaskStatus}
         onAddTaskUpdate={addEventTaskUpdate}
+        onSaveEventTask={saveEventTask}
+        onDeleteEventTask={deleteEventTask}
+        onSaveEvent={saveEvent}
         onResolveExceptionalApproval={async (eventId, decision, notes) => {
           await resolveExceptionalApproval(eventId, decision, notes, {
             uid: user?.uid || 'superadmin',

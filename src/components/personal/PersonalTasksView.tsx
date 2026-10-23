@@ -8,6 +8,7 @@ import {
   PersonalTaskPriority,
   UserProfile,
   EventTaskStage,
+  EventTaskStatus,
 } from '../../types';
 import {
   CheckSquare,
@@ -52,6 +53,8 @@ interface PersonalTasksViewProps {
   onRespondRequest: (requestId: string, response: 'confirmada' | 'rechazada') => Promise<void>;
   onSelectEvent: (eventId: string) => void;
   onSaveEventTask?: (eventId: string, task: any) => Promise<any>;
+  onUpdateEventTaskStatus?: (eventId: string, taskId: string, newStatus: EventTaskStatus, note?: string, author?: any) => Promise<void>;
+  onDeleteEventTask?: (eventId: string, taskId: string) => Promise<void>;
 }
 
 export const PersonalTasksView: React.FC<PersonalTasksViewProps> = ({
@@ -67,6 +70,8 @@ export const PersonalTasksView: React.FC<PersonalTasksViewProps> = ({
   onRespondRequest,
   onSelectEvent,
   onSaveEventTask,
+  onUpdateEventTaskStatus,
+  onDeleteEventTask,
 }) => {
   const today = getBogotaToday();
 
@@ -224,9 +229,68 @@ export const PersonalTasksView: React.FC<PersonalTasksViewProps> = ({
       });
   }, [events, user, currentPerson, requests]);
 
-  // Filtrado de tareas
+  // Combinar tareas personales directas + tareas asignadas al usuario en cualquier evento en tiempo real
+  const unifiedTasks = useMemo(() => {
+    type UnifiedTaskItem = PersonalTask & { isEventTask?: boolean; rawEventTaskId?: string };
+    const list: UnifiedTaskItem[] = personalTasks.map((t) => ({
+      ...t,
+      isEventTask: false,
+    }));
+
+    const cleanEmail = user?.email?.toLowerCase().trim();
+    const personId = currentPerson?.id;
+    const userUid = user?.uid;
+
+    if (user) {
+      events.forEach((evt) => {
+        if (evt.status === 'cancelado') return;
+        if (!Array.isArray(evt.tasks)) return;
+
+        evt.tasks.forEach((t) => {
+          const isAssigned = Boolean(
+            (personId && t.responsibleIds?.includes(personId)) ||
+            (userUid && t.responsibleIds?.includes(userUid)) ||
+            (cleanEmail && t.responsibleIds?.includes(cleanEmail)) ||
+            (personId && evt.responsibleId === personId && (!t.responsibleIds || t.responsibleIds.length === 0))
+          );
+
+          if (isAssigned) {
+            const taskName = t.name || (t as any).title || 'Tarea asignada';
+            const alreadyExists = list.some(
+              (pt) =>
+                (pt.eventId === evt.id && pt.title.trim().toLowerCase() === taskName.trim().toLowerCase()) ||
+                pt.id === `evt-task-${evt.id}-${t.id}`
+            );
+
+            if (!alreadyExists) {
+              list.push({
+                id: `evt-task-${evt.id}-${t.id}`,
+                userId: userUid || 'anon',
+                title: taskName,
+                description: t.description || `Etapa: ${t.stage}`,
+                dueDate: t.dueDate || evt.date,
+                dueTime: t.dueTime || evt.startTime,
+                priority: (t.priority as any) || 'media',
+                status: t.status === 'completada' ? 'completada' : 'pendiente',
+                category: 'evento',
+                eventId: evt.id,
+                eventTitle: evt.title,
+                createdAt: t.createdAt || evt.createdAt,
+                isEventTask: true,
+                rawEventTaskId: t.id,
+              });
+            }
+          }
+        });
+      });
+    }
+
+    return list;
+  }, [personalTasks, events, user, currentPerson]);
+
+  // Filtrado de tareas unificadas
   const filteredTasks = useMemo(() => {
-    return personalTasks
+    return unifiedTasks
       .filter((t) => {
         if (taskFilter === 'pendientes' && t.status !== 'pendiente') return false;
         if (taskFilter === 'completadas' && t.status !== 'completada') return false;
@@ -244,18 +308,18 @@ export const PersonalTasksView: React.FC<PersonalTasksViewProps> = ({
         if (a.dueDate && b.dueDate) return a.dueDate.localeCompare(b.dueDate);
         return 0;
       });
-  }, [personalTasks, taskFilter, priorityFilter]);
+  }, [unifiedTasks, taskFilter, priorityFilter]);
 
   const completedCount = useMemo(
-    () => personalTasks.filter((t) => t.status === 'completada').length,
-    [personalTasks]
+    () => unifiedTasks.filter((t) => t.status === 'completada').length,
+    [unifiedTasks]
   );
   const pendingCount = useMemo(
-    () => personalTasks.filter((t) => t.status === 'pendiente').length,
-    [personalTasks]
+    () => unifiedTasks.filter((t) => t.status === 'pendiente').length,
+    [unifiedTasks]
   );
 
-  const handleToggle = async (task: PersonalTask) => {
+  const handleToggle = async (task: PersonalTask & { isEventTask?: boolean; rawEventTaskId?: string }) => {
     const nextStatus = task.status === 'pendiente' ? 'completada' : 'pendiente';
     if (nextStatus === 'completada') {
       confetti({
@@ -264,7 +328,30 @@ export const PersonalTasksView: React.FC<PersonalTasksViewProps> = ({
         origin: { y: 0.7 },
       });
     }
-    await onToggleTask(task.id, nextStatus);
+
+    if (task.isEventTask && task.eventId && task.rawEventTaskId && onUpdateEventTaskStatus) {
+      await onUpdateEventTaskStatus(
+        task.eventId,
+        task.rawEventTaskId,
+        nextStatus === 'completada' ? 'completada' : 'pendiente',
+        `Tarea marcada como ${nextStatus} desde Mis Pendientes.`,
+        {
+          uid: user?.uid || 'user-anon',
+          name: currentPerson ? `${currentPerson.firstName} ${currentPerson.lastName}` : user?.displayName || user?.email,
+          email: user?.email,
+        }
+      );
+    } else {
+      await onToggleTask(task.id, nextStatus);
+    }
+  };
+
+  const handleDelete = async (task: PersonalTask & { isEventTask?: boolean; rawEventTaskId?: string }) => {
+    if (task.isEventTask && task.eventId && task.rawEventTaskId && onDeleteEventTask) {
+      await onDeleteEventTask(task.eventId, task.rawEventTaskId);
+    } else {
+      await onDeleteTask(task.id);
+    }
   };
 
   const handleCreateTask = async (e: React.FormEvent) => {
@@ -291,6 +378,7 @@ export const PersonalTasksView: React.FC<PersonalTasksViewProps> = ({
       try {
         await onSaveEventTask(selectedEventId, {
           title: newTitle.trim(),
+          name: newTitle.trim(),
           description: newDescription.trim(),
           stage: taskStage,
           status: 'pendiente',
@@ -299,8 +387,8 @@ export const PersonalTasksView: React.FC<PersonalTasksViewProps> = ({
           responsibleNames: currentPerson
             ? [`${currentPerson.firstName} ${currentPerson.lastName}`]
             : [user.displayName || user.email],
-          deadlineDate: newDueDate,
-          deadlineTime: newDueTime,
+          dueDate: newDueDate,
+          dueTime: newDueTime,
           exclusiveAttention: false,
           updates: [],
         });
@@ -742,7 +830,7 @@ export const PersonalTasksView: React.FC<PersonalTasksViewProps> = ({
                     </div>
 
                     <button
-                      onClick={() => onDeleteTask(task.id)}
+                      onClick={() => handleDelete(task)}
                       className="opacity-0 group-hover:opacity-100 p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all"
                       title="Eliminar recordatorio"
                     >

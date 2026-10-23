@@ -294,6 +294,12 @@ export const EventModal: React.FC<EventModalProps> = ({
     };
 
     setTasks((prev) => [...prev, newTask]);
+
+    // Asegurar que las personas asignadas a la tarea queden convocadas al evento
+    if (newTask.responsibleIds.length > 0) {
+      setSelectedPeopleIds((prev) => Array.from(new Set([...prev, ...newTask.responsibleIds])));
+    }
+
     setNewTaskName('');
     setNewTaskDesc('');
     setNewTaskPriority('media');
@@ -385,7 +391,7 @@ export const EventModal: React.FC<EventModalProps> = ({
         attendeesCount: Number(attendeesCount) || 0,
         isVirtual: Boolean(isVirtual),
         notes: notes.trim(),
-        peopleIds: selectedPeopleIds,
+        peopleIds: Array.from(new Set([...selectedPeopleIds, ...tasks.flatMap((t) => t.responsibleIds || [])])),
         tasks,
         reminder: reminderConfig,
         exceptionalApproval: exceptionalData,
@@ -405,9 +411,11 @@ export const EventModal: React.FC<EventModalProps> = ({
         createdAt: eventToEdit?.createdAt || new Date().toISOString(),
       };
 
+      const finalPeopleIds = eventPayload.peopleIds;
+
       if (eventToEdit) {
         eventPayload.id = eventToEdit.id;
-        await onSave(eventPayload, selectedPeopleIds, sendParticipationEmails);
+        await onSave(eventPayload, finalPeopleIds, sendParticipationEmails);
       } else {
         // Generar serie recurrente si aplica
         if (recurrenceFreq !== 'ninguna') {
@@ -422,10 +430,10 @@ export const EventModal: React.FC<EventModalProps> = ({
           });
 
           for (const instance of series) {
-            await onSave(instance, selectedPeopleIds, sendParticipationEmails);
+            await onSave(instance, finalPeopleIds, sendParticipationEmails);
           }
         } else {
-          await onSave(eventPayload, selectedPeopleIds, sendParticipationEmails);
+          await onSave(eventPayload, finalPeopleIds, sendParticipationEmails);
         }
       }
 

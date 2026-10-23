@@ -1092,6 +1092,31 @@ export async function saveEvent(event: Omit<EventEntity, 'id'> & { id?: string }
         console.warn('Error guardando audit log en Firestore:', err);
       }
 
+      // Actualizar inmediatamente en memoria local para reactividad instantánea (< 1ms)
+      const currentMem = load<EventEntity[]>(STORAGE_KEYS.EVENTS, initialEvents);
+      const existingMemIdx = currentMem.findIndex((e) => e.id === id);
+      const updatedMemItem: EventEntity = {
+        ...(existingMemIdx >= 0 ? currentMem[existingMemIdx] : {}),
+        ...event,
+        id,
+        updatedAt: now,
+        updatedBy: { uid: user.uid, name: user.displayName, email: user.email },
+        createdAt: (existingMemIdx >= 0 ? currentMem[existingMemIdx].createdAt : undefined) || now,
+        createdBy: (existingMemIdx >= 0 ? currentMem[existingMemIdx].createdBy : undefined) || {
+          uid: user.uid,
+          name: user.displayName,
+          email: user.email,
+        },
+      } as EventEntity;
+
+      if (existingMemIdx >= 0) {
+        currentMem[existingMemIdx] = updatedMemItem;
+      } else {
+        currentMem.unshift(updatedMemItem);
+      }
+      save(STORAGE_KEYS.EVENTS, currentMem);
+      eventListeners.forEach((fn) => fn(currentMem));
+
       return id;
     } catch (err) {
       console.error('Error guardando evento en Firestore, aplicando fallback local:', err);
@@ -1916,7 +1941,19 @@ export async function saveEventTask(
 ): Promise<EventTask> {
   const now = new Date().toISOString();
   const currentEvents = load<EventEntity[]>(STORAGE_KEYS.EVENTS, initialEvents);
-  const event = currentEvents.find((e) => e.id === eventId);
+  let event = currentEvents.find((e) => e.id === eventId);
+
+  // Si no está en memoria local, recuperarlo de Firestore
+  if (!event && isFirebaseConfigured && db) {
+    try {
+      const snap = await getDoc(doc(db, 'events', eventId));
+      if (snap.exists()) {
+        event = normalizeEvent(snap.id, snap.data());
+      }
+    } catch (e) {
+      console.warn('Error recuperando evento en saveEventTask:', e);
+    }
+  }
 
   if (!event) {
     throw new Error(`Evento con ID ${eventId} no encontrado.`);
@@ -1924,6 +1961,7 @@ export async function saveEventTask(
 
   const tasks = event.tasks || [];
   let savedTask: EventTask;
+  const rawName = (taskPayload as any).name || (taskPayload as any).title || 'Nueva Tarea';
 
   if (taskPayload.id) {
     const existingIdx = tasks.findIndex((t) => t.id === taskPayload.id);
@@ -1931,6 +1969,7 @@ export async function saveEventTask(
       savedTask = {
         ...tasks[existingIdx],
         ...taskPayload,
+        name: rawName,
         id: taskPayload.id,
         eventId,
         createdAt: tasks[existingIdx].createdAt || now,
@@ -1941,6 +1980,7 @@ export async function saveEventTask(
     } else {
       savedTask = {
         ...taskPayload,
+        name: rawName,
         id: taskPayload.id,
         eventId,
         createdAt: taskPayload.createdAt || now,
@@ -1953,6 +1993,7 @@ export async function saveEventTask(
     const newId = `task-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
     savedTask = {
       ...taskPayload,
+      name: rawName,
       id: newId,
       eventId,
       createdAt: now,
@@ -1962,8 +2003,42 @@ export async function saveEventTask(
     tasks.push(savedTask);
   }
 
+  // Asegurar que cualquier persona asignada a una tarea se incorpore a las personas del evento (peopleIds)
+  if (Array.isArray(savedTask.responsibleIds) && savedTask.responsibleIds.length > 0) {
+    const existingPeople = event.peopleIds || [];
+    event.peopleIds = Array.from(new Set([...existingPeople, ...savedTask.responsibleIds]));
+  }
+
   event.tasks = tasks;
   await saveEvent(event);
+
+  // Sincronizar en personal_tasks para cada persona asignada (para que se refleje inmediatamente en "Mis Pendientes")
+  if (Array.isArray(savedTask.responsibleIds) && savedTask.responsibleIds.length > 0) {
+    const peopleList = load<Person[]>(STORAGE_KEYS.PEOPLE, initialPeople);
+    for (const respId of savedTask.responsibleIds) {
+      const matchingPerson = peopleList.find(
+        (p) => p.id === respId || (p.email && p.email.toLowerCase() === respId.toLowerCase())
+      );
+      const targetUserId = matchingPerson?.email ? matchingPerson.id : respId;
+      try {
+        await savePersonalTask({
+          userId: targetUserId,
+          title: savedTask.name,
+          description: savedTask.description || `Etapa: ${savedTask.stage}`,
+          dueDate: savedTask.dueDate || event.date,
+          dueTime: savedTask.dueTime || event.startTime,
+          priority: savedTask.priority || 'media',
+          status: savedTask.status === 'completada' ? 'completada' : 'pendiente',
+          category: 'evento',
+          eventId: event.id,
+          eventTitle: event.title,
+        });
+      } catch (err) {
+        console.warn('Nota: Sincronización secundaria en personal_tasks:', err);
+      }
+    }
+  }
+
   return savedTask;
 }
 
@@ -1975,7 +2050,17 @@ export async function updateEventTaskStatus(
   author?: { uid: string; name: string; email?: string }
 ): Promise<void> {
   const currentEvents = load<EventEntity[]>(STORAGE_KEYS.EVENTS, initialEvents);
-  const event = currentEvents.find((e) => e.id === eventId);
+  let event = currentEvents.find((e) => e.id === eventId);
+  if (!event && isFirebaseConfigured && db) {
+    try {
+      const snap = await getDoc(doc(db, 'events', eventId));
+      if (snap.exists()) {
+        event = normalizeEvent(snap.id, snap.data());
+      }
+    } catch (e) {
+      console.warn('Error recuperando evento en updateEventTaskStatus:', e);
+    }
+  }
   if (!event || !event.tasks) return;
 
   const task = event.tasks.find((t) => t.id === taskId);
@@ -2012,7 +2097,17 @@ export async function addEventTaskUpdate(
   }
 ): Promise<void> {
   const currentEvents = load<EventEntity[]>(STORAGE_KEYS.EVENTS, initialEvents);
-  const event = currentEvents.find((e) => e.id === eventId);
+  let event = currentEvents.find((e) => e.id === eventId);
+  if (!event && isFirebaseConfigured && db) {
+    try {
+      const snap = await getDoc(doc(db, 'events', eventId));
+      if (snap.exists()) {
+        event = normalizeEvent(snap.id, snap.data());
+      }
+    } catch (e) {
+      console.warn('Error recuperando evento en addEventTaskUpdate:', e);
+    }
+  }
   if (!event || !event.tasks) return;
 
   const task = event.tasks.find((t) => t.id === taskId);
@@ -2040,7 +2135,17 @@ export async function addEventTaskUpdate(
 
 export async function deleteEventTask(eventId: string, taskId: string): Promise<void> {
   const currentEvents = load<EventEntity[]>(STORAGE_KEYS.EVENTS, initialEvents);
-  const event = currentEvents.find((e) => e.id === eventId);
+  let event = currentEvents.find((e) => e.id === eventId);
+  if (!event && isFirebaseConfigured && db) {
+    try {
+      const snap = await getDoc(doc(db, 'events', eventId));
+      if (snap.exists()) {
+        event = normalizeEvent(snap.id, snap.data());
+      }
+    } catch (e) {
+      console.warn('Error recuperando evento en deleteEventTask:', e);
+    }
+  }
   if (!event || !event.tasks) return;
 
   event.tasks = event.tasks.filter((t) => t.id !== taskId);

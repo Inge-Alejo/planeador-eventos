@@ -22,6 +22,7 @@ import {
   Send,
   Bell,
   Repeat,
+  Plus,
 } from 'lucide-react';
 import {
   EventEntity,
@@ -32,6 +33,7 @@ import {
   EventTask,
   EventTaskStage,
   EventTaskStatus,
+  EventTaskPriority,
 } from '../../types';
 import { formatFriendlyDate, format12Hour } from '../../lib/timezone';
 import { isInstitutionalSuperAdmin, canEditEventGeneralInfo } from '../../services/businessRules';
@@ -51,6 +53,9 @@ interface EventDetailDrawerProps {
   onUpdateTaskStatus?: (eventId: string, taskId: string, newStatus: EventTaskStatus, note?: string) => Promise<void>;
   onAddTaskUpdate?: (eventId: string, taskId: string, update: { text: string; authorUid: string; authorName: string; statusChange?: EventTaskStatus }) => Promise<void>;
   onResolveExceptionalApproval?: (eventId: string, decision: 'aprobado' | 'rechazado', notes: string) => Promise<void>;
+  onSaveEventTask?: (eventId: string, task: any) => Promise<any>;
+  onDeleteEventTask?: (eventId: string, taskId: string) => Promise<void>;
+  onSaveEvent?: (event: EventEntity) => Promise<any>;
 }
 
 export const EventDetailDrawer: React.FC<EventDetailDrawerProps> = ({
@@ -66,12 +71,24 @@ export const EventDetailDrawer: React.FC<EventDetailDrawerProps> = ({
   onUpdateTaskStatus,
   onAddTaskUpdate,
   onResolveExceptionalApproval,
+  onSaveEventTask,
+  onDeleteEventTask,
+  onSaveEvent,
 }) => {
   const { user } = useAuth();
   const [activeTaskUpdatingId, setActiveTaskUpdatingId] = useState<string | null>(null);
   const [updateText, setUpdateText] = useState('');
   const [approvalNotes, setApprovalNotes] = useState('');
   const [isProcessingApproval, setIsProcessingApproval] = useState(false);
+
+  // Estado para crear nueva tarea directamente en el drawer
+  const [newTaskStage, setNewTaskStage] = useState<EventTaskStage | null>(null);
+  const [newTaskName, setNewTaskName] = useState('');
+  const [newTaskDesc, setNewTaskDesc] = useState('');
+  const [newTaskPriority, setNewTaskPriority] = useState<EventTaskPriority>('media');
+  const [newTaskResponsibleId, setNewTaskResponsibleId] = useState('');
+  const [newTaskDueTime, setNewTaskDueTime] = useState('');
+  const [isSavingTask, setIsSavingTask] = useState(false);
 
   const { contentRef, handleBackdropClick } = useDismissable({
     onDismiss: onClose,
@@ -124,6 +141,48 @@ export const EventDetailDrawer: React.FC<EventDetailDrawerProps> = ({
       });
       setUpdateText('');
       setActiveTaskUpdatingId(null);
+    }
+  };
+
+  const handleCreateEventTask = async (stage: EventTaskStage) => {
+    if (!newTaskName.trim()) {
+      alert('Por favor indica el nombre de la tarea.');
+      return;
+    }
+    setIsSavingTask(true);
+    try {
+      const taskPayload = {
+        name: newTaskName.trim(),
+        description: newTaskDesc.trim() || undefined,
+        stage,
+        status: 'pendiente' as EventTaskStatus,
+        priority: newTaskPriority,
+        responsibleIds: newTaskResponsibleId ? [newTaskResponsibleId] : [],
+        dueDate: event.date,
+        dueTime: newTaskDueTime || undefined,
+        exclusiveAttention: false,
+        updates: [
+          {
+            id: `upd-${Date.now()}`,
+            authorUid: user?.uid || 'user-anon',
+            authorName: user?.displayName || user?.email || 'Organizador',
+            text: 'Tarea asignada e incorporada a la agenda del evento.',
+            createdAt: new Date().toISOString(),
+          },
+        ],
+      };
+      if (onSaveEventTask) {
+        await onSaveEventTask(event.id, taskPayload);
+      }
+      setNewTaskName('');
+      setNewTaskDesc('');
+      setNewTaskResponsibleId('');
+      setNewTaskDueTime('');
+      setNewTaskStage(null);
+    } catch (err: any) {
+      alert('Error guardando la tarea: ' + err.message);
+    } finally {
+      setIsSavingTask(false);
     }
   };
 
@@ -326,12 +385,117 @@ export const EventDetailDrawer: React.FC<EventDetailDrawerProps> = ({
                 <div key={stage} className="p-3.5 rounded-2xl border border-slate-200 bg-slate-50/50 space-y-2.5">
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-bold text-slate-800">{stageLabels[stage]}</span>
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-200 text-slate-700">
-                      {stageTasks.length} tareas
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-200 text-slate-700">
+                        {stageTasks.length} tareas
+                      </span>
+                      {onSaveEventTask && newTaskStage !== stage && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setNewTaskStage(stage);
+                            setNewTaskName('');
+                            setNewTaskDesc('');
+                            setNewTaskResponsibleId('');
+                            setNewTaskPriority('media');
+                            setNewTaskDueTime('');
+                          }}
+                          className="flex items-center gap-1 text-[11px] font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-2.5 py-1 rounded-lg transition-colors"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>+ Tarea</span>
+                        </button>
+                      )}
+                    </div>
                   </div>
 
-                  {stageTasks.length === 0 ? (
+                  {/* Formulario Inline para Crear Tarea en esta Etapa */}
+                  {newTaskStage === stage && (
+                    <div className="p-3 rounded-xl border border-indigo-200 bg-white shadow-xs space-y-2 text-xs">
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-indigo-900 text-[11px]">Nueva Tarea en {stageLabels[stage]}</span>
+                        <button
+                          type="button"
+                          onClick={() => setNewTaskStage(null)}
+                          className="text-slate-400 hover:text-slate-600 text-xs"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                      <input
+                        type="text"
+                        placeholder="Nombre de la tarea (ej: Confirmar micrófonos y pantalla)"
+                        value={newTaskName}
+                        onChange={(e) => setNewTaskName(e.target.value)}
+                        className="w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-indigo-500"
+                        autoFocus
+                      />
+                      <input
+                        type="text"
+                        placeholder="Descripción u observaciones opcionales"
+                        value={newTaskDesc}
+                        onChange={(e) => setNewTaskDesc(e.target.value)}
+                        className="w-full rounded-lg border border-slate-200 px-2.5 py-1 text-xs text-slate-800 focus:outline-none"
+                      />
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                        <div>
+                          <label className="block text-[10px] font-semibold text-slate-500 mb-0.5">Responsable</label>
+                          <select
+                            value={newTaskResponsibleId}
+                            onChange={(e) => setNewTaskResponsibleId(e.target.value)}
+                            className="w-full rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 focus:outline-none"
+                          >
+                            <option value="">Seleccionar responsable...</option>
+                            {people.map((p) => (
+                              <option key={p.id} value={p.id}>
+                                {p.firstName} {p.lastName} ({p.roleTitle})
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-semibold text-slate-500 mb-0.5">Prioridad</label>
+                          <select
+                            value={newTaskPriority}
+                            onChange={(e) => setNewTaskPriority(e.target.value as EventTaskPriority)}
+                            className="w-full rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 focus:outline-none"
+                          >
+                            <option value="baja">Baja</option>
+                            <option value="media">Media</option>
+                            <option value="alta">Alta</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-semibold text-slate-500 mb-0.5">Hora límite (opcional)</label>
+                          <input
+                            type="time"
+                            value={newTaskDueTime}
+                            onChange={(e) => setNewTaskDueTime(e.target.value)}
+                            className="w-full rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-mono text-slate-700"
+                          />
+                        </div>
+                      </div>
+                      <div className="flex justify-end gap-2 pt-1">
+                        <button
+                          type="button"
+                          onClick={() => setNewTaskStage(null)}
+                          className="px-3 py-1 rounded-lg text-slate-500 hover:bg-slate-100 text-xs"
+                        >
+                          Cancelar
+                        </button>
+                        <button
+                          type="button"
+                          disabled={isSavingTask}
+                          onClick={() => handleCreateEventTask(stage)}
+                          className="px-3 py-1 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-lg text-xs font-bold transition-colors"
+                        >
+                          {isSavingTask ? 'Guardando...' : 'Guardar y Asignar'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {stageTasks.length === 0 && newTaskStage !== stage ? (
                     <p className="text-[11px] text-slate-400 italic">No hay tareas asignadas en esta etapa.</p>
                   ) : (
                     stageTasks.map((task) => (
@@ -340,28 +504,46 @@ export const EventDetailDrawer: React.FC<EventDetailDrawerProps> = ({
                         className="p-3 rounded-xl border border-slate-200 bg-white space-y-2 text-xs shadow-2xs"
                       >
                         <div className="flex items-start justify-between gap-2">
-                          <div>
+                          <div className="flex-1">
                             <span className="font-bold text-slate-900 text-xs">{task.name}</span>
                             {task.description && (
                               <p className="text-[11px] text-slate-500 mt-0.5">{task.description}</p>
                             )}
                           </div>
-                          {/* Selector de Estado */}
-                          <select
-                            value={task.status}
-                            onChange={(e) => {
-                              if (onUpdateTaskStatus) {
-                                onUpdateTaskStatus(event.id, task.id, e.target.value as EventTaskStatus);
-                              }
-                            }}
-                            className="rounded-lg border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-700 focus:outline-none"
-                          >
-                            <option value="pendiente">Pendiente</option>
-                            <option value="en_curso">En Curso</option>
-                            <option value="completada">Completada</option>
-                            <option value="bloqueada">Bloqueada</option>
-                            <option value="cancelada">Cancelada</option>
-                          </select>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            {/* Selector de Estado */}
+                            <select
+                              value={task.status}
+                              onChange={(e) => {
+                                if (onUpdateTaskStatus) {
+                                  onUpdateTaskStatus(event.id, task.id, e.target.value as EventTaskStatus);
+                                }
+                              }}
+                              className="rounded-lg border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-700 focus:outline-none"
+                            >
+                              <option value="pendiente">Pendiente</option>
+                              <option value="en_curso">En Curso</option>
+                              <option value="completada">Completada</option>
+                              <option value="bloqueada">Bloqueada</option>
+                              <option value="cancelada">Cancelada</option>
+                            </select>
+
+                            {/* Botón eliminar tarea */}
+                            {onDeleteEventTask && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (confirm(`¿Eliminar la tarea "${task.name}"?`)) {
+                                    onDeleteEventTask(event.id, task.id);
+                                  }
+                                }}
+                                className="text-slate-400 hover:text-rose-600 p-1 transition-colors"
+                                title="Eliminar tarea"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
                         </div>
 
                         {/* Metadatos de la tarea */}
@@ -469,6 +651,35 @@ export const EventDetailDrawer: React.FC<EventDetailDrawerProps> = ({
                 Personas Convocadas ({event.peopleIds?.length || 0})
               </h3>
             </div>
+
+            {/* Selector rápido para convocar persona */}
+            {onSaveEvent && (
+              <div className="mb-3">
+                <select
+                  onChange={async (e) => {
+                    const pid = e.target.value;
+                    if (!pid) return;
+                    const updatedPeople = Array.from(new Set([...(event.peopleIds || []), pid]));
+                    await onSaveEvent({
+                      ...event,
+                      peopleIds: updatedPeople,
+                    });
+                    e.target.value = '';
+                  }}
+                  className="w-full rounded-xl border border-dashed border-indigo-300 bg-indigo-50/50 hover:bg-indigo-50 px-3 py-2 text-xs font-semibold text-indigo-800 focus:outline-none transition-colors"
+                  defaultValue=""
+                >
+                  <option value="" disabled>+ Convocar a otra persona del directorio al evento...</option>
+                  {people
+                    .filter((p) => !(event.peopleIds || []).includes(p.id))
+                    .map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.firstName} {p.lastName} — {p.roleTitle} ({p.department || 'Facultad de Medicina'})
+                      </option>
+                    ))}
+                </select>
+              </div>
+            )}
 
             <div className="space-y-2">
               {event.peopleIds && event.peopleIds.length > 0 ? (

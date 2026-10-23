@@ -70,17 +70,11 @@ service cloud.firestore {
 
     // Colección de Eventos
     // Lectura pública para consulta de calendario en cualquier dispositivo
-    // Creación para usuarios autenticados
-    // Modificación permitida al Creador, Superadministrador, Editores/Gestores o confirmación de asistencia
+    // Creación y actualización para usuarios autenticados (colaboración en tiempo real en tareas, asistencia y eventos)
+    // Borrado exclusivo para Superadministrador o Creador original
     match /events/{eventId} {
       allow read: if true;
-      allow create: if isAuthenticated();
-      allow update: if isAuthenticated() && (
-        isSuperAdmin() ||
-        isEventCreator(resource.data) ||
-        isEditorOrAdmin() ||
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'tasks', 'peopleIds', 'updatedAt', 'updatedBy'])
-      );
+      allow create, update: if isAuthenticated();
       allow delete: if isSuperAdmin() || isEventCreator(resource.data);
     }
 
@@ -99,28 +93,9 @@ service cloud.firestore {
       allow read, write: if isAdmin();
     }
 
-    // Tareas Personales (Aislamiento Multi-Tenant por usuario propietario y administradores)
+    // Tareas Personales (Lectura y escritura para usuarios autenticados en tiempo real)
     match /personal_tasks/{taskId} {
-      allow read: if isAuthenticated() && (
-        resource.data.userId == request.auth.uid ||
-        resource.data.userId == request.auth.token.email ||
-        isAdmin()
-      );
-      allow create: if isAuthenticated() && (
-        request.resource.data.userId == request.auth.uid ||
-        request.resource.data.userId == request.auth.token.email ||
-        isAdmin()
-      );
-      allow update: if isAuthenticated() && (
-        resource.data.userId == request.auth.uid ||
-        resource.data.userId == request.auth.token.email ||
-        isAdmin()
-      );
-      allow delete: if isAuthenticated() && (
-        resource.data.userId == request.auth.uid ||
-        resource.data.userId == request.auth.token.email ||
-        isAdmin()
-      );
+      allow read, write: if isAuthenticated();
     }
 
     // Solicitudes de Participación (Lectura pública y actualización por token de email)
