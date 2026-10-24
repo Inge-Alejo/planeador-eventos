@@ -525,6 +525,27 @@ if (channel) {
   };
 }
 
+// Helper crítico: Sanitización recursiva para Firestore (elimina campos undefined que rompen setDoc/updateDoc)
+export function sanitizeForFirestore<T>(data: T): T {
+  if (data === null || data === undefined) return null as any;
+  if (Array.isArray(data)) {
+    return data
+      .filter((item) => item !== undefined)
+      .map((item) => sanitizeForFirestore(item)) as any;
+  }
+  if (typeof data === 'object') {
+    if (data instanceof Date) return data as any;
+    const clean: Record<string, any> = {};
+    for (const [key, value] of Object.entries(data as Record<string, any>)) {
+      if (value !== undefined) {
+        clean[key] = sanitizeForFirestore(value);
+      }
+    }
+    return clean as any;
+  }
+  return data;
+}
+
 // Helper para normalizar eventos desde Firestore (evitar Timestamp vs ISO string issues)
 function normalizeEvent(id: string, data: any): EventEntity {
   let createdAt = data.createdAt;
@@ -540,6 +561,8 @@ function normalizeEvent(id: string, data: any): EventEntity {
   return {
     ...data,
     id,
+    tasks: Array.isArray(data.tasks) ? data.tasks : [],
+    peopleIds: Array.isArray(data.peopleIds) ? data.peopleIds : [],
     createdAt,
     updatedAt,
   };
@@ -712,27 +735,44 @@ export function subscribeToGroups(callback: (groups: PeopleGroup[]) => void): ()
   return () => groupListeners.delete(callback);
 }
 
-export function subscribeToPersonalTasks(userId: string, callback: (tasks: PersonalTask[]) => void): () => void {
+export function subscribeToPersonalTasks(
+  userId: string,
+  callback: (tasks: PersonalTask[]) => void,
+  userEmail?: string,
+  personId?: string
+): () => void {
+  const matchesUser = (t: PersonalTask) => {
+    if (!t) return false;
+    if (t.userId === userId) return true;
+    if (personId && (t.userId === personId || (t as any).personId === personId)) return true;
+    if (userEmail) {
+      const clean = userEmail.toLowerCase().trim();
+      if (t.userId && t.userId.toLowerCase().trim() === clean) return true;
+      if ((t as any).userEmail && (t as any).userEmail.toLowerCase().trim() === clean) return true;
+      if ((t as any).recipientEmail && (t as any).recipientEmail.toLowerCase().trim() === clean) return true;
+    }
+    return false;
+  };
+
   // Mantener listener local siempre activo para que cualquier mutación se refleje en vivo instantáneamente
   const localListener: Listener<PersonalTask[]> = (tasks) => {
-    callback(tasks.filter((t) => t.userId === userId));
+    callback(tasks.filter(matchesUser));
   };
   personalTaskListeners.add(localListener);
 
   if (isFirebaseConfigured && db) {
     const firestore = db;
-    const q = query(collection(firestore, 'personal_tasks'), where('userId', '==', userId));
     const unsub = onSnapshot(
-      q,
+      collection(firestore, 'personal_tasks'),
       (snapshot) => {
-        const data = snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as PersonalTask));
-        callback(data);
-        save(STORAGE_KEYS.PERSONAL_TASKS, data);
+        const allTasks = snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as PersonalTask));
+        save(STORAGE_KEYS.PERSONAL_TASKS, allTasks);
+        callback(allTasks.filter(matchesUser));
       },
       (error) => {
         console.warn('Firestore personal_tasks subscription error, fallback local:', error);
         const allTasks = load<PersonalTask[]>(STORAGE_KEYS.PERSONAL_TASKS, initialPersonalTasks);
-        callback(allTasks.filter((t) => t.userId === userId));
+        callback(allTasks.filter(matchesUser));
       }
     );
     return () => {
@@ -742,7 +782,7 @@ export function subscribeToPersonalTasks(userId: string, callback: (tasks: Perso
   }
 
   const allTasks = load<PersonalTask[]>(STORAGE_KEYS.PERSONAL_TASKS, initialPersonalTasks);
-  callback(allTasks.filter((t) => t.userId === userId));
+  callback(allTasks.filter(matchesUser));
   return () => personalTaskListeners.delete(localListener);
 }
 
@@ -1055,121 +1095,150 @@ export async function saveEvent(event: Omit<EventEntity, 'id'> & { id?: string }
   const now = new Date().toISOString();
   let id = event.id;
 
+  // 1. Asignar ID si es un evento nuevo
+  if (!id) {
+    if (isFirebaseConfigured && db) {
+      id = doc(collection(db, 'events')).id;
+    } else {
+      id = `evt-${Date.now()}`;
+    }
+  }
+
+  // 2. Normalizar todas las tareas asociadas al evento y asignar el eventId correcto
+  let normalizedTasks: EventTask[] = [];
+  if (Array.isArray(event.tasks)) {
+    normalizedTasks = event.tasks.map((t) => {
+      const taskId = t.id && !t.id.startsWith('pending')
+        ? t.id
+        : `task-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+      return {
+        ...t,
+        id: taskId,
+        eventId: id!,
+        name: t.name || (t as any).title || 'Nueva Tarea',
+        stage: t.stage || 'durante',
+        status: t.status || 'pendiente',
+        priority: t.priority || 'media',
+        responsibleIds: Array.isArray(t.responsibleIds) ? t.responsibleIds : [],
+        dueDate: t.dueDate || event.date,
+        dueTime: t.dueTime || undefined,
+        exclusiveAttention: Boolean(t.exclusiveAttention),
+        updates: Array.isArray(t.updates) && t.updates.length > 0
+          ? t.updates
+          : [
+              {
+                id: `upd-${Date.now()}`,
+                authorUid: user.uid,
+                authorName: user.displayName,
+                authorEmail: user.email,
+                text: 'Tarea incorporada a la agenda del evento.',
+                createdAt: now,
+              },
+            ],
+        createdAt: t.createdAt || now,
+        updatedAt: now,
+      };
+    });
+  }
+
+  // Asegurar que las personas asignadas a tareas se incorporen en peopleIds
+  const taskPeopleIds = normalizedTasks.flatMap((t) => t.responsibleIds || []);
+  const combinedPeopleIds = Array.from(new Set([...(event.peopleIds || []), ...taskPeopleIds]));
+
+  const eventWithTasks: EventEntity = {
+    ...event,
+    id,
+    peopleIds: combinedPeopleIds,
+    tasks: normalizedTasks,
+    updatedAt: now,
+    updatedBy: { uid: user.uid, name: user.displayName, email: user.email },
+    createdAt: event.createdAt || now,
+    createdBy: event.createdBy || { uid: user.uid, name: user.displayName, email: user.email },
+  } as EventEntity;
+
+  // 3. Guardar en Firestore con sanitización estricta (elimina undefined que rompen Firestore)
   if (isFirebaseConfigured && db) {
     try {
-      if (id) {
-        const eventRef = doc(db, 'events', id);
-        const dataToSave = {
-          ...event,
-          id,
-          updatedAt: now,
-          updatedBy: { uid: user.uid, name: user.displayName, email: user.email },
-        };
-        await setDoc(eventRef, dataToSave, { merge: true });
-      } else {
-        const newDocRef = doc(collection(db, 'events'));
-        id = newDocRef.id;
-        const newEventData = {
-          ...event,
-          id,
-          createdAt: now,
-          createdBy: { uid: user.uid, name: user.displayName, email: user.email },
-        };
-        await setDoc(newDocRef, newEventData);
-      }
+      const eventRef = doc(db, 'events', id);
+      const sanitizedData = sanitizeForFirestore(eventWithTasks);
+      await setDoc(eventRef, sanitizedData, { merge: true });
 
       // Guardar log en Firestore
       try {
-        await addDoc(collection(db, 'audit_logs'), {
+        await addDoc(collection(db, 'audit_logs'), sanitizeForFirestore({
           action: event.id ? 'EVENTO_MODIFICADO' : 'EVENTO_CREADO',
           entityId: id,
           entityType: 'evento',
           details: { title: event.title, space: event.spaceName, date: event.date },
           user: { uid: user.uid, name: user.displayName, email: user.email },
           timestamp: now,
-        });
+        }));
       } catch (err) {
         console.warn('Error guardando audit log en Firestore:', err);
       }
-
-      // Actualizar inmediatamente en memoria local para reactividad instantánea (< 1ms)
-      const currentMem = load<EventEntity[]>(STORAGE_KEYS.EVENTS, initialEvents);
-      const existingMemIdx = currentMem.findIndex((e) => e.id === id);
-      const updatedMemItem: EventEntity = {
-        ...(existingMemIdx >= 0 ? currentMem[existingMemIdx] : {}),
-        ...event,
-        id,
-        updatedAt: now,
-        updatedBy: { uid: user.uid, name: user.displayName, email: user.email },
-        createdAt: (existingMemIdx >= 0 ? currentMem[existingMemIdx].createdAt : undefined) || now,
-        createdBy: (existingMemIdx >= 0 ? currentMem[existingMemIdx].createdBy : undefined) || {
-          uid: user.uid,
-          name: user.displayName,
-          email: user.email,
-        },
-      } as EventEntity;
-
-      if (existingMemIdx >= 0) {
-        currentMem[existingMemIdx] = updatedMemItem;
-      } else {
-        currentMem.unshift(updatedMemItem);
-      }
-      save(STORAGE_KEYS.EVENTS, currentMem);
-      eventListeners.forEach((fn) => fn(currentMem));
-
-      return id;
     } catch (err) {
       console.error('Error guardando evento en Firestore, aplicando fallback local:', err);
     }
   }
 
-  // Local Storage Mutation Fallback
-  const current = load<EventEntity[]>(STORAGE_KEYS.EVENTS, initialEvents);
-  if (id) {
-    const index = current.findIndex((e) => e.id === id);
-    if (index >= 0) {
-      current[index] = {
-        ...current[index],
-        ...event,
-        id,
-        updatedAt: now,
-        updatedBy: { uid: user.uid, name: user.displayName, email: user.email },
-      };
-    } else {
-      current.unshift({
-        ...event,
-        id,
-        createdAt: now,
-        createdBy: { uid: user.uid, name: user.displayName, email: user.email },
-      });
-    }
-    addAuditLog({
-      action: 'EVENTO_MODIFICADO',
-      entityId: id,
-      entityType: 'evento',
-      details: { title: event.title, date: event.date, time: `${event.startTime}-${event.endTime}` },
-      user: { uid: user.uid, name: user.displayName, email: user.email },
-    });
+  // 4. Actualizar memoria local y notificar listeners en vivo
+  const currentMem = load<EventEntity[]>(STORAGE_KEYS.EVENTS, initialEvents);
+  const existingMemIdx = currentMem.findIndex((e) => e.id === id);
+  if (existingMemIdx >= 0) {
+    currentMem[existingMemIdx] = eventWithTasks;
   } else {
-    id = `evt-${Date.now()}`;
-    const newEvent: EventEntity = {
-      ...event,
-      id,
-      createdAt: now,
-      createdBy: { uid: user.uid, name: user.displayName, email: user.email },
-    };
-    current.unshift(newEvent);
-    addAuditLog({
-      action: 'EVENTO_CREADO',
-      entityId: id,
-      entityType: 'evento',
-      details: { title: event.title, space: event.spaceName, date: event.date },
-      user: { uid: user.uid, name: user.displayName, email: user.email },
-    });
+    currentMem.unshift(eventWithTasks);
+  }
+  save(STORAGE_KEYS.EVENTS, currentMem);
+  eventListeners.forEach((fn) => fn(currentMem));
+
+  // 5. Sincronizar automáticamente en personal_tasks y notificaciones para cada persona asignada a una tarea
+  if (normalizedTasks.length > 0) {
+    const peopleList = load<Person[]>(STORAGE_KEYS.PEOPLE, initialPeople);
+    for (const t of normalizedTasks) {
+      if (Array.isArray(t.responsibleIds) && t.responsibleIds.length > 0) {
+        for (const respId of t.responsibleIds) {
+          const matchingPerson = peopleList.find(
+            (p) => p.id === respId || (p.email && p.email.toLowerCase() === respId.toLowerCase())
+          );
+          const targetUserId = respId;
+          const targetEmail = matchingPerson?.email;
+
+          try {
+            await savePersonalTask({
+              id: `evt-task-${id}-${t.id}`,
+              userId: targetUserId,
+              userEmail: targetEmail,
+              title: t.name,
+              description: t.description || `Etapa: ${t.stage}`,
+              dueDate: t.dueDate || event.date,
+              dueTime: t.dueTime || event.startTime,
+              priority: (t.priority as any) || 'media',
+              status: t.status === 'completada' ? 'completada' : 'pendiente',
+              category: 'evento',
+              eventId: id,
+              eventTitle: event.title,
+            });
+
+            // Enviar notificación a la persona asignada (si tiene correo o ID)
+            if (targetEmail || targetUserId) {
+              await addNotification({
+                userId: targetEmail || targetUserId,
+                recipientEmail: targetEmail,
+                type: 'solicitud',
+                title: 'Nueva Tarea Asignada',
+                message: `Se te ha asignado la tarea "${t.name}" en el evento "${event.title}" (${event.date}).`,
+                eventId: id,
+              });
+            }
+          } catch (e) {
+            console.warn('Nota: Sincronización secundaria en personal_tasks:', e);
+          }
+        }
+      }
+    }
   }
 
-  save(STORAGE_KEYS.EVENTS, current);
-  eventListeners.forEach((fn) => fn(current));
   return id;
 }
 
@@ -1529,36 +1598,36 @@ export async function savePersonalTask(
 ): Promise<string> {
   const now = new Date().toISOString();
   let id = task.id;
+  if (!id) {
+    id = `task-${Date.now()}`;
+  }
+
+  const taskData: PersonalTask = {
+    ...task,
+    id,
+    createdAt: task.createdAt || now,
+  };
+
+  // Actualizar inmediatamente estado local para respuesta instantánea en la interfaz
+  const current = load<PersonalTask[]>(STORAGE_KEYS.PERSONAL_TASKS, initialPersonalTasks);
+  const idx = current.findIndex((t) => t.id === id);
+  if (idx >= 0) {
+    current[idx] = { ...current[idx], ...taskData };
+  } else {
+    current.unshift(taskData);
+  }
+  save(STORAGE_KEYS.PERSONAL_TASKS, current);
+  personalTaskListeners.forEach((fn) => fn(current));
 
   if (isFirebaseConfigured && db) {
     try {
-      if (!id) {
-        id = `task-${Date.now()}`;
-      }
-      const taskData: PersonalTask = {
-        ...task,
-        id,
-        createdAt: task.createdAt || now,
-      };
-      await setDoc(doc(db, 'personal_tasks', id), taskData, { merge: true });
-      return id;
+      const sanitized = sanitizeForFirestore(taskData);
+      await setDoc(doc(db, 'personal_tasks', id), sanitized, { merge: true });
     } catch (err) {
       console.error('Error guardando tarea personal en Firestore:', err);
     }
   }
 
-  const current = load<PersonalTask[]>(STORAGE_KEYS.PERSONAL_TASKS, initialPersonalTasks);
-  if (id) {
-    const idx = current.findIndex((t) => t.id === id);
-    if (idx >= 0) current[idx] = { ...current[idx], ...task, id, createdAt: current[idx].createdAt || now };
-    else current.push({ ...task, id, createdAt: now });
-  } else {
-    id = `task-${Date.now()}`;
-    current.push({ ...task, id, createdAt: now });
-  }
-
-  save(STORAGE_KEYS.PERSONAL_TASKS, current);
-  personalTaskListeners.forEach((fn) => fn(current));
   return id;
 }
 
@@ -1631,12 +1700,18 @@ export async function createParticipationRequest(
     createdAt: now,
   };
 
+  // Actualizar inmediatamente en estado local para reactividad inmediata
+  const current = load<ParticipationRequest[]>(STORAGE_KEYS.REQUESTS, initialRequests);
+  current.unshift(newReq);
+  save(STORAGE_KEYS.REQUESTS, current);
+  requestListeners.forEach((fn) => fn(current));
+
   if (isFirebaseConfigured && db) {
     try {
-      await setDoc(doc(db, 'participation_requests', id), newReq);
+      await setDoc(doc(db, 'participation_requests', id), sanitizeForFirestore(newReq));
       try {
         // Notificación para Administradores
-        await addDoc(collection(db, 'notifications'), {
+        await addDoc(collection(db, 'notifications'), sanitizeForFirestore({
           userId: 'ALL_ADMINS',
           recipientEmail: 'ALL_ADMINS',
           type: 'solicitud',
@@ -1645,12 +1720,12 @@ export async function createParticipationRequest(
           eventId: req.eventId,
           read: false,
           createdAt: now,
-        });
+        }));
 
         // Notificación exclusiva para la persona invitada (aparece en su panel al iniciar sesión)
         if (req.personEmail) {
           const cleanEmail = req.personEmail.toLowerCase().trim();
-          await addDoc(collection(db, 'notifications'), {
+          await addDoc(collection(db, 'notifications'), sanitizeForFirestore({
             userId: cleanEmail,
             recipientEmail: cleanEmail,
             type: 'solicitud',
@@ -1659,7 +1734,7 @@ export async function createParticipationRequest(
             eventId: req.eventId,
             read: false,
             createdAt: now,
-          });
+          }));
         }
       } catch (e) {
         console.warn('Error guardando notif en Firestore:', e);
@@ -1677,11 +1752,6 @@ export async function createParticipationRequest(
       console.error('Error guardando solicitud en Firestore:', err);
     }
   }
-
-  const current = load<ParticipationRequest[]>(STORAGE_KEYS.REQUESTS, initialRequests);
-  current.unshift(newReq);
-  save(STORAGE_KEYS.REQUESTS, current);
-  requestListeners.forEach((fn) => fn(current));
 
   addNotification({
     userId: 'ALL_ADMINS',
@@ -1857,7 +1927,7 @@ export async function addNotification(notif: Omit<AppNotification, 'id' | 'read'
 
   if (isFirebaseConfigured && db) {
     try {
-      await setDoc(doc(db, 'notifications', id), newNotif);
+      await setDoc(doc(db, 'notifications', id), sanitizeForFirestore(newNotif));
     } catch (e) {
       console.warn('Error guardando notificación en Firestore:', e);
     }

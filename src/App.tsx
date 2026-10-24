@@ -73,7 +73,7 @@ const MainApp: React.FC = () => {
     deleteReportSchedule,
     reportLogs,
     saveReportExecutionLog,
-  } = useEventFlow(user?.uid);
+  } = useEventFlow(user?.uid, user?.email);
 
   const [activeTab, setActiveTab] = useState<ActiveTab>('dashboard');
   const [activeTabFilter, setActiveTabFilter] = useState<any>(undefined);

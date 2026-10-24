@@ -361,6 +361,35 @@ export const EventModal: React.FC<EventModalProps> = ({
 
     setIsSubmitting(true);
     try {
+      // Auto-guardar cualquier tarea que el usuario haya dejado redactando en una etapa sin oprimir "Guardar Tarea"
+      let activeTasks = [...tasks];
+      if (newTaskStage && newTaskName.trim()) {
+        const autoTask: EventTask = {
+          id: `task-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          eventId: eventToEdit?.id || 'pending',
+          name: newTaskName.trim(),
+          description: newTaskDesc.trim() || undefined,
+          stage: newTaskStage,
+          status: 'pendiente',
+          priority: newTaskPriority,
+          responsibleIds: newTaskResponsibles.length > 0 ? newTaskResponsibles : (responsibleId ? [responsibleId] : []),
+          dueDate: date,
+          dueTime: newTaskDueTime || undefined,
+          exclusiveAttention: newTaskExclusive,
+          updates: [
+            {
+              id: `upd-${Date.now()}`,
+              authorUid: user?.uid || 'user-creator',
+              authorName: user?.displayName || 'Creador de la Tarea',
+              text: 'Tarea creada e incorporada a la agenda del evento.',
+              createdAt: new Date().toISOString(),
+            },
+          ],
+          createdAt: new Date().toISOString(),
+        };
+        activeTasks.push(autoTask);
+      }
+
       const targetSpace = spaces.find((s) => s.id === spaceId);
       const targetResp = people.find((p) => p.id === responsibleId);
 
@@ -391,8 +420,12 @@ export const EventModal: React.FC<EventModalProps> = ({
         attendeesCount: Number(attendeesCount) || 0,
         isVirtual: Boolean(isVirtual),
         notes: notes.trim(),
-        peopleIds: Array.from(new Set([...selectedPeopleIds, ...tasks.flatMap((t) => t.responsibleIds || [])])),
-        tasks,
+        peopleIds: Array.from(new Set([
+          ...selectedPeopleIds,
+          ...(responsibleId ? [responsibleId] : []),
+          ...activeTasks.flatMap((t) => t.responsibleIds || []),
+        ])),
+        tasks: activeTasks,
         reminder: reminderConfig,
         exceptionalApproval: exceptionalData,
         recurrence:

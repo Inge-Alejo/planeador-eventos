@@ -153,13 +153,22 @@ export const PersonalTasksView: React.FC<PersonalTasksViewProps> = ({
         return isInvited || isResp || isCreator || hasConfirmedAttendance || hasEventTask;
       })
       .sort((a, b) => {
-        if (a.date !== b.date) return a.date.localeCompare(b.date);
-        return a.startTime.localeCompare(b.startTime);
+        const isAFuture = a.date >= today;
+        const isBFuture = b.date >= today;
+        if (isAFuture && !isBFuture) return -1;
+        if (!isAFuture && isBFuture) return 1;
+        if (isAFuture && isBFuture) {
+          if (a.date !== b.date) return a.date.localeCompare(b.date);
+          return a.startTime.localeCompare(b.startTime);
+        }
+        if (a.date !== b.date) return b.date.localeCompare(a.date);
+        return b.startTime.localeCompare(a.startTime);
       });
-  }, [currentPerson, events, user, requests]);
+  }, [currentPerson, events, user, requests, today]);
 
   // Filtros de tareas
   const [taskFilter, setTaskFilter] = useState<'todas' | 'pendientes' | 'completadas'>('pendientes');
+  const [taskScope, setTaskScope] = useState<'todas' | 'asignadas'>('todas');
   const [priorityFilter, setPriorityFilter] = useState<string>('todas');
 
   // Modal para crear nueva tarea
@@ -231,10 +240,16 @@ export const PersonalTasksView: React.FC<PersonalTasksViewProps> = ({
 
   // Combinar tareas personales directas + tareas asignadas al usuario en cualquier evento en tiempo real
   const unifiedTasks = useMemo(() => {
-    type UnifiedTaskItem = PersonalTask & { isEventTask?: boolean; rawEventTaskId?: string };
+    type UnifiedTaskItem = PersonalTask & {
+      isEventTask?: boolean;
+      rawEventTaskId?: string;
+      isDirectlyAssigned?: boolean;
+      assigneeNames?: string[];
+    };
     const list: UnifiedTaskItem[] = personalTasks.map((t) => ({
       ...t,
       isEventTask: false,
+      isDirectlyAssigned: true,
     }));
 
     const cleanEmail = user?.email?.toLowerCase().trim();
@@ -247,14 +262,20 @@ export const PersonalTasksView: React.FC<PersonalTasksViewProps> = ({
         if (!Array.isArray(evt.tasks)) return;
 
         evt.tasks.forEach((t) => {
-          const isAssigned = Boolean(
+          const isDirectlyAssigned = Boolean(
             (personId && t.responsibleIds?.includes(personId)) ||
             (userUid && t.responsibleIds?.includes(userUid)) ||
             (cleanEmail && t.responsibleIds?.includes(cleanEmail)) ||
             (personId && evt.responsibleId === personId && (!t.responsibleIds || t.responsibleIds.length === 0))
           );
 
-          if (isAssigned) {
+          const isEventOwner = Boolean(
+            (userUid && evt.createdBy?.uid === userUid) ||
+            (cleanEmail && evt.createdBy?.email?.toLowerCase().trim() === cleanEmail) ||
+            (personId && evt.responsibleId === personId)
+          );
+
+          if (isDirectlyAssigned || isEventOwner) {
             const taskName = t.name || (t as any).title || 'Tarea asignada';
             const alreadyExists = list.some(
               (pt) =>
@@ -263,6 +284,13 @@ export const PersonalTasksView: React.FC<PersonalTasksViewProps> = ({
             );
 
             if (!alreadyExists) {
+              const respNames = (t.responsibleIds || [])
+                .map((rid) => {
+                  const p = people.find((pers) => pers.id === rid);
+                  return p ? `${p.firstName} ${p.lastName}` : null;
+                })
+                .filter(Boolean) as string[];
+
               list.push({
                 id: `evt-task-${evt.id}-${t.id}`,
                 userId: userUid || 'anon',
@@ -278,6 +306,8 @@ export const PersonalTasksView: React.FC<PersonalTasksViewProps> = ({
                 createdAt: t.createdAt || evt.createdAt,
                 isEventTask: true,
                 rawEventTaskId: t.id,
+                isDirectlyAssigned,
+                assigneeNames: respNames,
               });
             }
           }
@@ -286,12 +316,13 @@ export const PersonalTasksView: React.FC<PersonalTasksViewProps> = ({
     }
 
     return list;
-  }, [personalTasks, events, user, currentPerson]);
+  }, [personalTasks, events, user, currentPerson, people]);
 
   // Filtrado de tareas unificadas
   const filteredTasks = useMemo(() => {
     return unifiedTasks
       .filter((t) => {
+        if (taskScope === 'asignadas' && t.isEventTask && !t.isDirectlyAssigned) return false;
         if (taskFilter === 'pendientes' && t.status !== 'pendiente') return false;
         if (taskFilter === 'completadas' && t.status !== 'completada') return false;
         if (priorityFilter !== 'todas' && t.priority !== priorityFilter) return false;
@@ -308,7 +339,7 @@ export const PersonalTasksView: React.FC<PersonalTasksViewProps> = ({
         if (a.dueDate && b.dueDate) return a.dueDate.localeCompare(b.dueDate);
         return 0;
       });
-  }, [unifiedTasks, taskFilter, priorityFilter]);
+  }, [unifiedTasks, taskFilter, taskScope, priorityFilter]);
 
   const completedCount = useMemo(
     () => unifiedTasks.filter((t) => t.status === 'completada').length,
@@ -553,7 +584,7 @@ export const PersonalTasksView: React.FC<PersonalTasksViewProps> = ({
             </span>
           </div>
 
-          <div className="space-y-3">
+          <div className="space-y-3 max-h-[640px] overflow-y-auto pr-1">
             {myUpcomingEvents.length === 0 ? (
               <div className="p-8 text-center bg-white rounded-2xl border border-slate-200">
                 <CalendarIcon className="w-10 h-10 text-slate-300 mx-auto mb-2" />
@@ -563,7 +594,7 @@ export const PersonalTasksView: React.FC<PersonalTasksViewProps> = ({
                 </p>
               </div>
             ) : (
-              myUpcomingEvents.slice(0, 5).map((evt) => {
+              myUpcomingEvents.map((evt) => {
                 const spaceName = getSpaceName(evt.spaceId);
                 const gCalUrl = generateGoogleCalendarUrl({
                   title: evt.title,
@@ -661,11 +692,36 @@ export const PersonalTasksView: React.FC<PersonalTasksViewProps> = ({
             </h2>
 
             {/* Filtros */}
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="flex bg-slate-100 p-0.5 rounded-xl text-xs font-semibold">
+                <button
+                  onClick={() => setTaskScope('todas')}
+                  className={`px-2.5 py-1 rounded-lg transition-all ${
+                    taskScope === 'todas'
+                      ? 'bg-white text-indigo-700 shadow-xs'
+                      : 'text-slate-500 hover:text-slate-800'
+                  }`}
+                  title="Todas las tareas de mis eventos y personales"
+                >
+                  Todas las actividades
+                </button>
+                <button
+                  onClick={() => setTaskScope('asignadas')}
+                  className={`px-2.5 py-1 rounded-lg transition-all ${
+                    taskScope === 'asignadas'
+                      ? 'bg-white text-indigo-700 shadow-xs'
+                      : 'text-slate-500 hover:text-slate-800'
+                  }`}
+                  title="Solo tareas asignadas a mí"
+                >
+                  Solo asignadas a mí
+                </button>
+              </div>
+
               <div className="flex bg-slate-100 p-0.5 rounded-xl text-xs font-semibold">
                 <button
                   onClick={() => setTaskFilter('pendientes')}
-                  className={`px-3 py-1 rounded-lg transition-all ${
+                  className={`px-2.5 py-1 rounded-lg transition-all ${
                     taskFilter === 'pendientes'
                       ? 'bg-white text-emerald-700 shadow-xs'
                       : 'text-slate-500 hover:text-slate-800'
@@ -675,7 +731,7 @@ export const PersonalTasksView: React.FC<PersonalTasksViewProps> = ({
                 </button>
                 <button
                   onClick={() => setTaskFilter('completadas')}
-                  className={`px-3 py-1 rounded-lg transition-all ${
+                  className={`px-2.5 py-1 rounded-lg transition-all ${
                     taskFilter === 'completadas'
                       ? 'bg-white text-emerald-700 shadow-xs'
                       : 'text-slate-500 hover:text-slate-800'
@@ -685,7 +741,7 @@ export const PersonalTasksView: React.FC<PersonalTasksViewProps> = ({
                 </button>
                 <button
                   onClick={() => setTaskFilter('todas')}
-                  className={`px-3 py-1 rounded-lg transition-all ${
+                  className={`px-2.5 py-1 rounded-lg transition-all ${
                     taskFilter === 'todas'
                       ? 'bg-white text-emerald-700 shadow-xs'
                       : 'text-slate-500 hover:text-slate-800'
@@ -825,6 +881,15 @@ export const PersonalTasksView: React.FC<PersonalTasksViewProps> = ({
                             <span className="truncate max-w-[220px]">Evento: {task.eventTitle}</span>
                             <span className="text-[10px] text-indigo-400">↗</span>
                           </button>
+                        )}
+
+                        {(task as any).assigneeNames && (task as any).assigneeNames.length > 0 && (
+                          <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-700 bg-emerald-50 border border-emerald-200/80 rounded-md px-2 py-0.5">
+                            <span>👤</span>
+                            <span className="truncate max-w-[180px]">
+                              {(task as any).isDirectlyAssigned ? 'Asignada a mí' : `Para: ${(task as any).assigneeNames.join(', ')}`}
+                            </span>
+                          </span>
                         )}
                       </div>
                     </div>

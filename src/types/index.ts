@@ -66,6 +66,8 @@ export type PersonalTaskStatus = 'pendiente' | 'completada';
 export interface PersonalTask {
   id: string;
   userId: string; // UID del usuario dueño de la tarea
+  userEmail?: string;
+  personId?: string;
   title: string;
   description?: string;
   dueDate: string; // YYYY-MM-DD

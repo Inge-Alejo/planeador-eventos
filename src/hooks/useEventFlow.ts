@@ -60,7 +60,7 @@ import {
 import { detectConflicts } from '../services/conflictEngine';
 import { getBogotaToday, getBogotaCurrentTime, timeStringToMinutes } from '../lib/timezone';
 
-export function useEventFlow(currentUserId?: string) {
+export function useEventFlow(currentUserId?: string, currentUserEmail?: string, currentPersonId?: string) {
   const [events, setEvents] = useState<EventEntity[]>([]);
   const [spaces, setSpaces] = useState<Space[]>([]);
   const [people, setPeople] = useState<Person[]>([]);
@@ -74,7 +74,7 @@ export function useEventFlow(currentUserId?: string) {
   const [reportLogs, setReportLogs] = useState<ReportExecutionLog[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Inicializar y subscribirse en tiempo real
+  // Inicializar y subscribirse en tiempo real a las colecciones maestras
   useEffect(() => {
     initializeSeedData();
 
@@ -89,10 +89,6 @@ export function useEventFlow(currentUserId?: string) {
     const unsubReportSchedules = subscribeToReportSchedules(setReportSchedules);
     const unsubReportLogs = subscribeToReportLogs(setReportLogs);
 
-    let unsubPersonalTasks = () => {};
-    const effectiveUserId = currentUserId || 'admin-1';
-    unsubPersonalTasks = subscribeToPersonalTasks(effectiveUserId, setPersonalTasks);
-
     setLoading(false);
 
     return () => {
@@ -100,7 +96,6 @@ export function useEventFlow(currentUserId?: string) {
       unsubSpaces();
       unsubPeople();
       unsubGroups();
-      unsubPersonalTasks();
       unsubRequests();
       unsubNotifs();
       unsubAudit();
@@ -108,7 +103,34 @@ export function useEventFlow(currentUserId?: string) {
       unsubReportSchedules();
       unsubReportLogs();
     };
-  }, [currentUserId]);
+  }, []);
+
+  // Determinar la identidad de persona correspondiente al usuario actual
+  const matchedPerson = useMemo(() => {
+    if (!currentUserEmail && !currentUserId && !currentPersonId) return null;
+    return people.find((p) =>
+      (currentPersonId && p.id === currentPersonId) ||
+      (currentUserEmail && p.email?.toLowerCase().trim() === currentUserEmail.toLowerCase().trim()) ||
+      (currentUserId && p.id === currentUserId)
+    );
+  }, [people, currentPersonId, currentUserEmail, currentUserId]);
+
+  const effectivePersonId = currentPersonId || matchedPerson?.id;
+
+  // Suscripción reactiva a tareas personales con soporte unificado de UID, email y personId
+  useEffect(() => {
+    const effectiveUserId = currentUserId || 'admin-1';
+    const unsubPersonalTasks = subscribeToPersonalTasks(
+      effectiveUserId,
+      setPersonalTasks,
+      currentUserEmail,
+      effectivePersonId
+    );
+
+    return () => {
+      unsubPersonalTasks();
+    };
+  }, [currentUserId, currentUserEmail, effectivePersonId]);
 
   // Calcular métricas del Dashboard en vivo
   const metrics: DashboardMetrics = useMemo(() => {
