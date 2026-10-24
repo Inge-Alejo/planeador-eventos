@@ -148,9 +148,23 @@ export const LoginScreen: React.FC = () => {
           </div>
 
           {error && (
-            <div className="flex items-start gap-2.5 rounded-2xl bg-rose-50 border border-rose-200 p-3 text-xs text-rose-700">
-              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-rose-600" />
-              <span>{error}</span>
+            <div className="flex flex-col gap-2 rounded-2xl bg-rose-50 border border-rose-200 p-3.5 text-xs text-rose-700">
+              <div className="flex items-start gap-2.5">
+                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-rose-600" />
+                <span className="font-medium">{error}</span>
+              </div>
+              {mode === 'login' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMode('forgot');
+                    setError(null);
+                  }}
+                  className="self-start text-[11px] font-bold text-indigo-700 hover:text-indigo-900 underline ml-6 cursor-pointer"
+                >
+                  ¿Deseas restablecer tu contraseña institucional por correo? Haz clic aquí
+                </button>
+              )}
             </div>
           )}
 

@@ -22,7 +22,7 @@ import {
   getDocs,
 } from 'firebase/firestore';
 import { sendNewUserRegistrationNotificationToSuperAdmin } from '../services/emailService';
-import { addNotification, savePerson, userProfileToPerson } from '../services/store';
+import { addNotification, savePerson, userProfileToPerson, sanitizeForFirestore } from '../services/store';
 
 interface AuthContextType {
   user: UserProfile | null;
@@ -106,7 +106,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       const unsubAuth = onAuthStateChanged(auth, async (fbUser) => {
         if (fbUser) {
-          const userEmail = (fbUser.email || '').toLowerCase();
+          const userEmail = (fbUser.email || '').toLowerCase().trim();
           const userDocRef = doc(db!, 'users', fbUser.uid);
 
           // Verificar si el correo es Admin Raíz
@@ -114,27 +114,35 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             ADMIN_EMAILS.includes(userEmail) ||
             userEmail === 'proyectostic.med@udea.edu.co';
 
+          // Asignar inmediatamente el perfil base para que la interfaz pase a MainApp sin bloqueo
+          const baseProfile: UserProfile = {
+            uid: fbUser.uid,
+            displayName: fbUser.displayName || userEmail.split('@')[0],
+            email: userEmail,
+            role: isRootAdmin ? 'administrador' : 'lector',
+            status: isRootAdmin ? 'aprobado' : 'pendiente',
+            createdAt: new Date().toISOString(),
+            lastLogin: new Date().toISOString(),
+          };
+          setUser((prev) => prev || baseProfile);
+          localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(baseProfile));
+
           try {
             const snap = await getDoc(userDocRef);
             if (!snap.exists()) {
               // Nuevo usuario: si es admin queda aprobado, si no queda pendiente
               const initialProfile: UserProfile = {
-                uid: fbUser.uid,
-                displayName: fbUser.displayName || userEmail.split('@')[0],
-                email: userEmail,
-                photoURL: fbUser.photoURL || undefined,
-                role: isRootAdmin ? 'administrador' : 'lector',
-                status: isRootAdmin ? 'aprobado' : 'pendiente',
-                createdAt: new Date().toISOString(),
-                lastLogin: new Date().toISOString(),
+                ...baseProfile,
+                ...(fbUser.photoURL ? { photoURL: fbUser.photoURL } : {}),
               };
-              await setDoc(userDocRef, {
+              await setDoc(userDocRef, sanitizeForFirestore({
                 ...initialProfile,
                 timestamp: serverTimestamp(),
-              });
+              })).catch((e) => console.warn('Advertencia guardando perfil nuevo en Firestore:', e));
+
               try {
                 const personData = userProfileToPerson(initialProfile);
-                await setDoc(doc(db!, 'people', fbUser.uid), personData, { merge: true });
+                await setDoc(doc(db!, 'people', fbUser.uid), sanitizeForFirestore(personData), { merge: true }).catch(console.warn);
               } catch (e) {
                 console.warn('Error sincronizando persona en Firestore al autenticar:', e);
               }
@@ -146,7 +154,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               if (isRootAdmin && (data.role !== 'administrador' || data.status !== 'aprobado')) {
                 data.role = 'administrador';
                 data.status = 'aprobado';
-                await setDoc(userDocRef, { role: 'administrador', status: 'aprobado' }, { merge: true });
+                await setDoc(userDocRef, { role: 'administrador', status: 'aprobado' }, { merge: true }).catch(console.warn);
               }
               const merged = { ...data, uid: fbUser.uid };
               setUser(merged);
@@ -162,7 +170,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               }
             });
           } catch (err) {
-            console.error('Error sincronizando perfil en Firestore:', err);
+            console.warn('Advertencia sincronizando perfil en Firestore, manteniendo sesión activa:', err);
+            setUser(baseProfile);
+            localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(baseProfile));
           }
         } else {
           // No hay usuario autenticado en este navegador
@@ -187,10 +197,38 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setLoading(true);
     try {
       const cleanEmail = email.trim().toLowerCase();
-      const cleanPass = pass.trim();
 
       if (isFirebaseConfigured && auth) {
-        await signInWithEmailAndPassword(auth, cleanEmail, cleanPass);
+        let userCred;
+        try {
+          userCred = await signInWithEmailAndPassword(auth, cleanEmail, pass);
+        } catch (firstErr: any) {
+          // Si falló y la contraseña tenía espacios, intentar con trim
+          if (pass !== pass.trim()) {
+            userCred = await signInWithEmailAndPassword(auth, cleanEmail, pass.trim());
+          } else {
+            throw firstErr;
+          }
+        }
+
+        if (userCred?.user) {
+          const fbUser = userCred.user;
+          const isRootAdmin =
+            ADMIN_EMAILS.includes(cleanEmail) ||
+            cleanEmail === 'proyectostic.med@udea.edu.co';
+
+          const immediateProfile: UserProfile = {
+            uid: fbUser.uid,
+            displayName: fbUser.displayName || cleanEmail.split('@')[0],
+            email: cleanEmail,
+            role: isRootAdmin ? 'administrador' : 'lector',
+            status: isRootAdmin ? 'aprobado' : 'pendiente',
+            createdAt: new Date().toISOString(),
+            lastLogin: new Date().toISOString(),
+          };
+          setUser(immediateProfile);
+          localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(immediateProfile));
+        }
       } else {
         // Fallback local simulado
         const isRootAdmin =
